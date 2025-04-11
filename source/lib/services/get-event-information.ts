@@ -4,7 +4,7 @@ import * as baAsn1 from '../asn1';
 import * as baEnum from '../enum';
 import {EncodeBuffer, BACNetObjectID, BACNetEventInformation} from '../types';
 
-export const encode = (buffer: EncodeBuffer, lastReceivedObjectId: BACNetObjectID) => {
+export const encode = (buffer: EncodeBuffer, lastReceivedObjectId: BACNetObjectID): void => {
   baAsn1.encodeContextObjectId(buffer, 0, lastReceivedObjectId.type, lastReceivedObjectId.instance);
 };
 
@@ -17,7 +17,7 @@ export const decode = (buffer: Buffer, offset: number) => {
   return {len, lastReceivedObjectId: {type: decodedValue.objectType, instance: decodedValue.instance}};
 };
 
-export const encodeAcknowledge = (buffer: EncodeBuffer, events: BACNetEventInformation[], moreEvents: boolean) => {
+export const encodeAcknowledge = (buffer: EncodeBuffer, events: BACNetEventInformation[], moreEvents: boolean): void => {
   baAsn1.encodeOpeningTag(buffer, 0);
   events.forEach((eventData) => {
     baAsn1.encodeContextObjectId(buffer, 0, eventData.objectId.type, eventData.objectId.instance);
@@ -45,9 +45,11 @@ export const decodeAcknowledge = (buffer: Buffer, offset: number, apduLen: numbe
   let result: any;
   let decodedValue: any;
   const value: any = {};
-  if (!baAsn1.decodeIsOpeningTagNumber(buffer, offset + len, 0)) return;
+
+  if (!baAsn1.decodeIsOpeningTagNumber(buffer, offset + len, 0)) return undefined;
   len++;
   value.events = [];
+
   while ((apduLen - len) > 3) {
     const event: any = {};
     result = baAsn1.decodeTagNumberAndValue(buffer, offset + len);
@@ -55,22 +57,27 @@ export const decodeAcknowledge = (buffer: Buffer, offset: number, apduLen: numbe
     decodedValue = baAsn1.decodeObjectId(buffer, offset + len);
     len += decodedValue.len;
     event.objectId = {type: decodedValue.objectType, instance: decodedValue.instance};
+
     result = baAsn1.decodeTagNumberAndValue(buffer, offset + len);
     len += result.len;
     decodedValue = baAsn1.decodeEnumerated(buffer, offset + len, result.value);
     len += decodedValue.len;
     event.eventState = decodedValue.value;
+
     result = baAsn1.decodeTagNumberAndValue(buffer, offset + len);
     len += result.len;
     decodedValue = baAsn1.decodeBitstring(buffer, offset + len, result.value);
     len += decodedValue.len;
     event.acknowledgedTransitions = decodedValue.value;
-    if (!baAsn1.decodeIsOpeningTagNumber(buffer, offset + len, 3)) return;
+
+    if (!baAsn1.decodeIsOpeningTagNumber(buffer, offset + len, 3)) return undefined;
     len++;
     event.eventTimeStamps = [];
+
     for (let i = 0; i < 3; i++) {
       result = baAsn1.decodeTagNumberAndValue(buffer, offset + len);
       len += result.len;
+
       if (result.tagNumber === baEnum.TimeStamp.TIME) {
         decodedValue = baAsn1.decodeBacnetTime(buffer, offset + len);
         len += decodedValue.len;
@@ -90,21 +97,26 @@ export const decodeAcknowledge = (buffer: Buffer, offset: number, apduLen: numbe
         len++;
       }
     }
-    if (!baAsn1.decodeIsClosingTagNumber(buffer, offset + len, 3)) return;
+
+    if (!baAsn1.decodeIsClosingTagNumber(buffer, offset + len, 3)) return undefined;
     len++;
+
     result = baAsn1.decodeTagNumberAndValue(buffer, offset + len);
     len += result.len;
     decodedValue = baAsn1.decodeEnumerated(buffer, offset + len, result.value);
     len += decodedValue.len;
     event.notifyType = decodedValue.value;
+
     result = baAsn1.decodeTagNumberAndValue(buffer, offset + len);
     len += result.len;
     decodedValue = baAsn1.decodeBitstring(buffer, offset + len, result.value);
     len += decodedValue.len;
     event.eventEnable = decodedValue.value;
-    if (!baAsn1.decodeIsOpeningTagNumber(buffer, offset + len, 6)) return;
+
+    if (!baAsn1.decodeIsOpeningTagNumber(buffer, offset + len, 6)) return undefined;
     len++;
     event.eventPriorities = [];
+
     for (let i = 0; i < 3; i++) {
       result = baAsn1.decodeTagNumberAndValue(buffer, offset + len);
       len += result.len;
@@ -112,16 +124,20 @@ export const decodeAcknowledge = (buffer: Buffer, offset: number, apduLen: numbe
       len += decodedValue.len;
       event.eventPriorities[i] = decodedValue.value;
     }
-    if (!baAsn1.decodeIsClosingTagNumber(buffer, offset + len, 6)) return;
+
+    if (!baAsn1.decodeIsClosingTagNumber(buffer, offset + len, 6)) return undefined;
     len++;
     value.events.push(event);
   }
-  if (!baAsn1.decodeIsClosingTagNumber(buffer, offset + len, 0)) return;
+
+  if (!baAsn1.decodeIsClosingTagNumber(buffer, offset + len, 0)) return undefined;
   len++;
+
   result = baAsn1.decodeTagNumberAndValue(buffer, offset + len);
   len += result.len;
   value.moreEvents = buffer[offset + len] > 0;
   len++;
   value.len = len;
+
   return value;
 };
