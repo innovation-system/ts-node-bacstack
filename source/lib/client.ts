@@ -38,7 +38,7 @@ const BVLC_HEADER_LENGTH = 4;
  *   apduTimeout: 6000                     // Wait twice as long for response
  * });
  */
-export class Client extends EventEmitter {
+export default class Client extends EventEmitter {
   private _settings: any;
   private _transport: baTransport;
 
