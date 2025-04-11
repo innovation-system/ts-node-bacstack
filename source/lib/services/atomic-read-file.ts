@@ -4,7 +4,7 @@ import * as baAsn1 from '../asn1';
 import * as baEnum from '../enum';
 import {EncodeBuffer, BACNetObjectID} from '../types';
 
-export const encode = (buffer: EncodeBuffer, isStream: boolean, objectId: BACNetObjectID, position: number, count: number) => {
+export const encode = (buffer: EncodeBuffer, isStream: boolean, objectId: BACNetObjectID, position: number, count: number): void => {
   baAsn1.encodeApplicationObjectId(buffer, objectId.type, objectId.instance);
   if (isStream) {
     baAsn1.encodeOpeningTag(buffer, 0);
@@ -24,12 +24,12 @@ export const decode = (buffer: Buffer, offset: number) => {
   let result;
   let decodedValue;
   let isStream = true;
-  let objectId = {};
+  let objectId: BACNetObjectID = {type: 0, instance: 0}; // Properly initialized with type
   let position = -1;
   let count = 0;
   result = baAsn1.decodeTagNumberAndValue(buffer, offset + len);
   len += result.len;
-  if (result.tagNumber !== baEnum.ApplicationTags.OBJECTIDENTIFIER) return;
+  if (result.tagNumber !== baEnum.ApplicationTags.OBJECTIDENTIFIER) return undefined;
   decodedValue = baAsn1.decodeObjectId(buffer, offset + len);
   len += decodedValue.len;
   objectId = {type: decodedValue.objectType, instance: decodedValue.instance};
@@ -38,37 +38,37 @@ export const decode = (buffer: Buffer, offset: number) => {
     len++;
     result = baAsn1.decodeTagNumberAndValue(buffer, offset + len);
     len += result.len;
-    if (result.tagNumber !== baEnum.ApplicationTags.SIGNED_INTEGER) return;
+    if (result.tagNumber !== baEnum.ApplicationTags.SIGNED_INTEGER) return undefined;
     decodedValue = baAsn1.decodeSigned(buffer, offset + len, result.value);
     len += decodedValue.len;
     position = decodedValue.value;
     result = baAsn1.decodeTagNumberAndValue(buffer, offset + len);
     len += result.len;
-    if (result.tagNumber !== baEnum.ApplicationTags.UNSIGNED_INTEGER) return;
+    if (result.tagNumber !== baEnum.ApplicationTags.UNSIGNED_INTEGER) return undefined;
     decodedValue = baAsn1.decodeUnsigned(buffer, offset + len, result.value);
     len += decodedValue.len;
     count = decodedValue.value;
-    if (!baAsn1.decodeIsClosingTagNumber(buffer, offset + len, 0)) return;
+    if (!baAsn1.decodeIsClosingTagNumber(buffer, offset + len, 0)) return undefined;
     len++;
   } else if (baAsn1.decodeIsOpeningTagNumber(buffer, offset + len, 1)) {
     isStream = false;
     len++;
     result = baAsn1.decodeTagNumberAndValue(buffer, offset + len);
     len += result.len;
-    if (result.tagNumber !== baEnum.ApplicationTags.SIGNED_INTEGER) return;
+    if (result.tagNumber !== baEnum.ApplicationTags.SIGNED_INTEGER) return undefined;
     decodedValue = baAsn1.decodeSigned(buffer, offset + len, result.value);
     len += decodedValue.len;
     position = decodedValue.value;
     result = baAsn1.decodeTagNumberAndValue(buffer, offset + len);
     len += result.len;
-    if (result.tagNumber !== baEnum.ApplicationTags.UNSIGNED_INTEGER) return;
+    if (result.tagNumber !== baEnum.ApplicationTags.UNSIGNED_INTEGER) return undefined;
     decodedValue = baAsn1.decodeUnsigned(buffer, offset + len, result.value);
     len += decodedValue.len;
     count = decodedValue.value;
-    if (!baAsn1.decodeIsClosingTagNumber(buffer, offset + len, 1)) return;
+    if (!baAsn1.decodeIsClosingTagNumber(buffer, offset + len, 1)) return undefined;
     len++;
   } else {
-    return;
+    return undefined;
   }
   return {
     len: len,
@@ -79,7 +79,7 @@ export const decode = (buffer: Buffer, offset: number) => {
   };
 };
 
-export const encodeAcknowledge = (buffer: EncodeBuffer, isStream: boolean, endOfFile: boolean, position: number, blockCount: number, blocks: number[][], counts: number[]) => {
+export const encodeAcknowledge = (buffer: EncodeBuffer, isStream: boolean, endOfFile: boolean, position: number, blockCount: number, blocks: number[][], counts: number[]): void => {
   baAsn1.encodeApplicationBoolean(buffer, endOfFile);
   if (isStream) {
     baAsn1.encodeOpeningTag(buffer, 0);
@@ -101,35 +101,38 @@ export const decodeAcknowledge = (buffer: Buffer, offset: number) => {
   let len = 0;
   let result: any;
   let decodedValue: any;
-  let isStream: boolean;
-  let position: number;
+  let isStream = false; // TypeScript inferisce automaticamente boolean
+  let position = 0; // TypeScript inferisce automaticamente number
   let targetBuffer: Buffer;
+
   result = baAsn1.decodeTagNumberAndValue(buffer, offset + len);
   len += result.len;
-  if (result.tagNumber !== baEnum.ApplicationTags.BOOLEAN) return;
+  if (result.tagNumber !== baEnum.ApplicationTags.BOOLEAN) return undefined;
   const endOfFile = result.value > 0;
+
   if (baAsn1.decodeIsOpeningTagNumber(buffer, offset + len, 0)) {
     isStream = true;
     len++;
     result = baAsn1.decodeTagNumberAndValue(buffer, offset + len);
     len += result.len;
-    if (result.tagNumber !== baEnum.ApplicationTags.SIGNED_INTEGER) return;
+    if (result.tagNumber !== baEnum.ApplicationTags.SIGNED_INTEGER) return undefined;
     decodedValue = baAsn1.decodeSigned(buffer, offset + len, result.value);
     len += decodedValue.len;
     position = decodedValue.value;
     result = baAsn1.decodeTagNumberAndValue(buffer, offset + len);
     len += result.len;
-    if (result.tagNumber !== baEnum.ApplicationTags.OCTET_STRING) return;
+    if (result.tagNumber !== baEnum.ApplicationTags.OCTET_STRING) return undefined;
     targetBuffer = buffer.slice(offset + len, offset + len + result.value);
     len += result.value;
-    if (!baAsn1.decodeIsClosingTagNumber(buffer, offset + len, 0)) return;
+    if (!baAsn1.decodeIsClosingTagNumber(buffer, offset + len, 0)) return undefined;
     len++;
   } else if (baAsn1.decodeIsOpeningTagNumber(buffer, offset + len, 1)) {
     isStream = false;
     throw new Error('NotImplemented');
   } else {
-    return;
+    return undefined;
   }
+
   return {
     len: len,
     endOfFile: endOfFile,

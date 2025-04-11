@@ -3,7 +3,7 @@
 import * as baAsn1 from '../asn1';
 import {EncodeBuffer, BACNetAlarm} from '../types';
 
-export const encode = (buffer: EncodeBuffer, alarms: BACNetAlarm[]) => {
+export const encode = (buffer: EncodeBuffer, alarms: BACNetAlarm[]): void => {
   alarms.forEach((alarm) => {
     baAsn1.encodeContextObjectId(buffer, 12, alarm.objectId.type, alarm.objectId.instance);
     baAsn1.encodeContextEnumerated(buffer, 9, alarm.alarmState);
@@ -16,8 +16,14 @@ export const decode = (buffer: Buffer, offset: number, apduLen: number) => {
   let result: any;
   let decodedValue: any;
   const alarms: BACNetAlarm[] = [];
+
   while ((apduLen - 3 - len) > 0) {
-    const value: any = {};
+    const value: BACNetAlarm = {
+      objectId: {type: 0, instance: 0},
+      alarmState: 0,
+      acknowledgedTransitions: {bitsUsed: 0, value: []}
+    };
+
     result = baAsn1.decodeTagNumberAndValue(buffer, offset + len);
     len += result.len;
     decodedValue = baAsn1.decodeObjectId(buffer, offset + len);
