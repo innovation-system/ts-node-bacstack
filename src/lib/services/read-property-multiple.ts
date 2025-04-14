@@ -1,7 +1,7 @@
 'use strict';
 
 import * as baAsn1 from '../asn1';
-import {EncodeBuffer} from '../types';
+import {DecodeAcknowledgeMultipleResult, EncodeBuffer, ReadAccessDecode} from '../types';
 
 export const encode = (buffer: EncodeBuffer, properties: any[]) => {
   properties.forEach((value) => baAsn1.encodeReadAccessSpecification(buffer, value));
@@ -26,9 +26,9 @@ export const encodeAcknowledge = (buffer: EncodeBuffer, values: any[]) => {
   values.forEach((value) => baAsn1.encodeReadAccessResult(buffer, value));
 };
 
-export const decodeAcknowledge = (buffer: Buffer, offset: number, apduLen: number) => {
+export const decodeAcknowledge = (buffer: Buffer, offset: number, apduLen: number): DecodeAcknowledgeMultipleResult => {
   let len = 0;
-  const values = [];
+  const values: ReadAccessDecode['value'][] = [];
   while ((apduLen - len) > 0) {
     const result = baAsn1.decodeReadAccessResult(buffer, offset + len, apduLen - len);
     if (!result) return;

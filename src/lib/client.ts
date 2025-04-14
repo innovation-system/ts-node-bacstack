@@ -25,7 +25,8 @@ import {
   ReadPropertyOptions,
   WritePropertyOptions,
   ErrorCallback,
-  DataCallback
+  DataCallback,
+  DecodeAcknowledgeSingleResult
 } from './types';
 
 const DEFAULT_HOP_COUNT = 0xFF;
@@ -388,47 +389,55 @@ export class Client extends EventEmitter {
   }
 
   private _handlePdu(address: string, type: number, buffer: Buffer, offset: number, length: number) {
-    let result;
     // Handle different PDU types
     switch (type & baEnum.PDU_TYPE_MASK) {
-      case baEnum.PduTypes.UNCONFIRMED_REQUEST:
-        result = baApdu.decodeUnconfirmedServiceRequest(buffer, offset);
+      case baEnum.PduTypes.UNCONFIRMED_REQUEST: {
+        const result = baApdu.decodeUnconfirmedServiceRequest(buffer, offset);
         this._processUnconfirmedServiceRequest(address, result.type, result.service, buffer, offset + result.len, length - result.len);
         break;
-      case baEnum.PduTypes.SIMPLE_ACK:
-        result = baApdu.decodeSimpleAck(buffer, offset);
+      }
+      case baEnum.PduTypes.SIMPLE_ACK: {
+        const result = baApdu.decodeSimpleAck(buffer, offset);
         offset += result.len;
         length -= result.len;
         this._invokeCallback(result.invokeId, null, {result: result, buffer: buffer, offset: offset + result.len, length: length - result.len});
         break;
-      case baEnum.PduTypes.COMPLEX_ACK:
-        result = baApdu.decodeComplexAck(buffer, offset);
+      }
+      case baEnum.PduTypes.COMPLEX_ACK: {
+        const result = baApdu.decodeComplexAck(buffer, offset);
         if ((type & baEnum.PduConReqBits.SEGMENTED_MESSAGE) === 0) {
           this._invokeCallback(result.invokeId, null, {result: result, buffer: buffer, offset: offset + result.len, length: length - result.len});
         } else {
           this._processSegment(address, result.type, result.service, result.invokeId, baEnum.MaxSegmentsAccepted.SEGMENTS_0, baEnum.MaxApduLengthAccepted.OCTETS_50, false, result.sequencenumber, result.proposedWindowNumber, buffer, offset + result.len, length - result.len);
         }
         break;
-      case baEnum.PduTypes.SEGMENT_ACK:
-        result = baApdu.decodeSegmentAck(buffer, offset);
+      }
+      case baEnum.PduTypes.SEGMENT_ACK: {
+        // FIXME: Segment ACK handling
+        // const result = baApdu.decodeSegmentAck(buffer, offset);
         // m_last_segment_ack.Set(address, result.originalInvokeId, result.sequencenumber, result.actualWindowSize);
         // this._processSegmentAck(address, result.type, result.originalInvokeId, result.sequencenumber, result.actualWindowSize, buffer, offset + result.len, length - result.len);
         break;
-      case baEnum.PduTypes.ERROR:
-        result = baApdu.decodeError(buffer, offset);
+      }
+      case baEnum.PduTypes.ERROR: {
+        const result = baApdu.decodeError(buffer, offset);
         this._processError(result.invokeId, buffer, offset + result.len, length - result.len);
         break;
+      }
       case baEnum.PduTypes.REJECT:
-      case baEnum.PduTypes.ABORT:
-        result = baApdu.decodeAbort(buffer, offset);
+      case baEnum.PduTypes.ABORT: {
+        const result = baApdu.decodeAbort(buffer, offset);
         this._processAbort(result.invokeId, result.reason);
         break;
+      }
       case baEnum.PduTypes.CONFIRMED_REQUEST:
-        result = baApdu.decodeConfirmedServiceRequest(buffer, offset);
-        if ((type & baEnum.PduConReqBits.SEGMENTED_MESSAGE) === 0) {
-          this._processConfirmedServiceRequest(address, result.type, result.service, result.maxSegments, result.maxApdu, result.invokeId, buffer, offset + result.len, length - result.len);
-        } else {
-          this._processSegment(address, result.type, result.service, result.invokeId, result.maxSegments, result.maxApdu, true, result.sequencenumber, result.proposedWindowNumber, buffer, offset + result.len, length - result.len);
+        {
+          const result = baApdu.decodeConfirmedServiceRequest(buffer, offset);
+          if ((type & baEnum.PduConReqBits.SEGMENTED_MESSAGE) === 0) {
+            this._processConfirmedServiceRequest(address, result.type, result.service, result.maxSegments, result.maxApdu, result.invokeId, buffer, offset + result.len, length - result.len);
+          } else {
+            this._processSegment(address, result.type, result.service, result.invokeId, result.maxSegments, result.maxApdu, true, result.sequencenumber, result.proposedWindowNumber, buffer, offset + result.len, length - result.len);
+          }
         }
         break;
       default:
@@ -577,7 +586,8 @@ export class Client extends EventEmitter {
    *   console.log('value: ', value);
    * });
    */
-  readProperty(address: string, objectId: BACNetObjectID, propertyId: number, options: ReadPropertyOptions | DataCallback<any>, next?: DataCallback<any>) {
+  readProperty(address: string, objectId: BACNetObjectID, propertyId: number, next: DataCallback<DecodeAcknowledgeSingleResult>) : void
+  readProperty(address: string, objectId: BACNetObjectID, propertyId: number, options: ReadPropertyOptions | DataCallback<DecodeAcknowledgeSingleResult>, next?: DataCallback<DecodeAcknowledgeSingleResult>): void {
     next = next || (options as DataCallback<any>);
     const settings = {
       maxSegments: (options as ReadPropertyOptions).maxSegments || baEnum.MaxSegmentsAccepted.SEGMENTS_65,

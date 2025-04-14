@@ -29,7 +29,9 @@ import {
   ReadAccessSpec,
   CovSubscription,
   ContextTagWithLength,
-  ContextCharacterString
+  ContextCharacterString,
+  ReadAccessProperty,
+  ReadAccessError
 } from './types';
 
 const getBuffer = (): EncodeBuffer => ({
@@ -750,7 +752,7 @@ export const decodeReadAccessResult = (buffer: Buffer, offset: number, apduLen: 
   let len = 0;
   const value: {
     objectId: BACNetObjectID;
-    values: any[];
+    values: ReadAccessProperty[];
   } = {
     objectId: {type: 0, instance: 0},
     values: []
@@ -767,13 +769,19 @@ export const decodeReadAccessResult = (buffer: Buffer, offset: number, apduLen: 
   if (!decodeIsOpeningTagNumber(buffer, offset + len, 1)) return undefined;
   len++;
 
-  const values = [];
+  const values: ReadAccessProperty[] = [];
   while ((apduLen - len) > 0) {
-    const newEntry: any = {};
+    const newEntry: ReadAccessProperty = {
+      id: 0,
+      index: baEnum.ASN1_ARRAY_ALL,
+      value: []
+    };
+
     if (decodeIsClosingTagNumber(buffer, offset + len, 1)) {
       len++;
       break;
     }
+
     const tagResult1 = decodeTagNumberAndValue(buffer, offset + len);
     len += tagResult1.len;
     if (tagResult1.tagNumber !== 2) return undefined;
@@ -787,37 +795,48 @@ export const decodeReadAccessResult = (buffer: Buffer, offset: number, apduLen: 
       const unsignedResult = decodeUnsigned(buffer, offset + len, tagResult2.value);
       newEntry.index = unsignedResult.value;
       len += unsignedResult.len;
-    } else {
-      newEntry.index = baEnum.ASN1_ARRAY_ALL;
     }
+
     const tagResult3 = decodeTagNumberAndValue(buffer, offset + len);
     len += tagResult3.len;
     if (tagResult3.tagNumber === 4) {
-      const localValues = [];
+      const localValues: ApplicationData[] = [];
       while ((len + offset) <= buffer.length && !decodeIsClosingTagNumber(buffer, offset + len, 4)) {
         const localResult = bacappDecodeApplicationData(buffer, offset + len, apduLen + offset - 1, value.objectId.type, newEntry.id);
         if (!localResult) return undefined;
         len += localResult.len;
-        const resObj: {value: any, type: number, encoding?: number} = {
+        const resObj: ApplicationData = {
           value: localResult.value,
-          type: localResult.type
+          type: localResult.type,
+          len: localResult.len,
+          ...(localResult.encoding !== undefined && {encoding: localResult.encoding})
         };
-        // HACK: Drop string specific handling ASAP
-        if (localResult.encoding !== undefined) resObj.encoding = localResult.encoding;
         localValues.push(resObj);
       }
       if (!decodeIsClosingTagNumber(buffer, offset + len, 4)) return undefined;
-      if ((localValues.length === 2) && (localValues[0].type === baEnum.ApplicationTags.DATE) && (localValues[1].type === baEnum.ApplicationTags.TIME)) {
-        const date = localValues[0].value;
-        const time = localValues[1].value;
-        const bdatetime = new Date(date.year, date.month, date.day, time.hour, time.minute, time.second, time.millisecond);
-        newEntry.value = [{type: baEnum.ApplicationTags.DATETIME, value: bdatetime}];
+      if (
+        localValues.length === 2 &&
+        localValues[0].type === baEnum.ApplicationTags.DATE &&
+        localValues[1].type === baEnum.ApplicationTags.TIME
+      ) {
+        const date = localValues[0].value as Date;
+        const time = localValues[1].value as Date;
+        const bdatetime = new Date(
+            date.getFullYear(),
+            date.getMonth(),
+            date.getDate(),
+            time.getHours(),
+            time.getMinutes(),
+            time.getSeconds(),
+            time.getMilliseconds()
+        );
+        newEntry.value = [{type: baEnum.ApplicationTags.DATETIME, value: bdatetime, len: localValues[1].len}];
       } else {
         newEntry.value = localValues;
       }
       len++;
     } else if (tagResult3.tagNumber === 5) {
-      const err: {errorClass: number, errorCode: number} = {
+      const err: ReadAccessError = {
         errorClass: 0,
         errorCode: 0
       };
@@ -833,10 +852,13 @@ export const decodeReadAccessResult = (buffer: Buffer, offset: number, apduLen: 
       err.errorCode = errorCodeResult.value;
       if (!decodeIsClosingTagNumber(buffer, offset + len, 5)) return undefined;
       len++;
-      newEntry.value = [{
-        type: baEnum.ApplicationTags.ERROR,
-        value: err
-      }];
+      newEntry.value = [
+        {
+          type: baEnum.ApplicationTags.ERROR,
+          value: err,
+          len: 0
+        }
+      ];
     }
     values.push(newEntry);
   }

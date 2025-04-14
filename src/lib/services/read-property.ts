@@ -2,7 +2,7 @@
 
 import * as baAsn1 from '../asn1';
 import * as baEnum from '../enum';
-import {EncodeBuffer, BACNetObjectID} from '../types';
+import {EncodeBuffer, BACNetObjectID, ApplicationData, DecodeAcknowledgeSingleResult} from '../types';
 
 export const encode = (buffer: EncodeBuffer, objectType: number, objectInstance: number, propertyId: number, arrayIndex: number) => {
   if (objectType <= baEnum.ASN1_MAX_OBJECT) {
@@ -64,7 +64,8 @@ export const encodeAcknowledge = (buffer: EncodeBuffer, objectId: BACNetObjectID
   baAsn1.encodeClosingTag(buffer, 3);
 };
 
-export const decodeAcknowledge = (buffer: Buffer, offset: number, apduLen: number) => {
+
+export const decodeAcknowledge = (buffer: Buffer, offset: number, apduLen: number): DecodeAcknowledgeSingleResult | undefined => {
   let result: any;
   let decodedValue: any;
   const objectId: any = {};
@@ -90,7 +91,7 @@ export const decodeAcknowledge = (buffer: Buffer, offset: number, apduLen: numbe
   } else {
     property.index = baEnum.ASN1_ARRAY_ALL;
   }
-  const values = [];
+  const values: ApplicationData[] = [];
   if (!baAsn1.decodeIsOpeningTagNumber(buffer, offset + len, 3)) return;
   len++;
   while ((apduLen - len) > 1) {

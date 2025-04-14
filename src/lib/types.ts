@@ -128,7 +128,7 @@ export interface ReadAccessDecode {
   len: number;
   value: {
     objectId: BACNetObjectID;
-    values: any[];
+    values: ReadAccessProperty[];
   };
 }
 
@@ -299,3 +299,34 @@ export interface TargetResult {
 export type ErrorCallback = (err?: Error) => void;
 
 export type DataCallback<T> = (err?: Error, result?: T) => void;
+
+export interface DecodeAcknowledgeSingleResult {
+  len: number;
+  objectId: {
+    type: number;
+    instance: number;
+  };
+  property: {
+    id: number;
+    index: number;
+  };
+  values: ApplicationData[];
+}
+
+
+export interface ReadAccessProperty {
+  id: number;
+  index: number;
+  value: ApplicationData[];
+}
+
+
+export interface ReadAccessError {
+  errorClass: number;
+  errorCode: number;
+}
+
+export interface DecodeAcknowledgeMultipleResult {
+  len: number;
+  values: ReadAccessDecode['value'][];
+}
