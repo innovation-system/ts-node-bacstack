@@ -10,7 +10,7 @@
   },
   "scripts": {
     "changelog": "commitlint --from=origin/master",
-    "build": "tsc",
+    "build": "tsc -p tsconfig.build.json",
     "lint": "eslint source/**/*.*",
     "lint:fix": "eslint --fix \"source/**/*\"",
     "test": "yarn test:types && yarn test:ts",
