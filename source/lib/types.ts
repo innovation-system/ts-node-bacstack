@@ -241,3 +241,9 @@ export interface Abort extends BasePacket {
   invokeId: number;
   reason: number;
 }
+
+export interface BvlcPacket {
+  len: number;
+  func: number;
+  msgLength: number;
+}

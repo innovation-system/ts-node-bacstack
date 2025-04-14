@@ -1,8 +1,9 @@
 'use strict';
 
 import * as baEnum from './enum';
+import {BvlcPacket} from './types';
 
-export const encode = (buffer: Buffer, func: number, msgLength: number) => {
+export const encode = (buffer: Buffer, func: number, msgLength: number): number => {
   buffer[0] = baEnum.BVLL_TYPE_BACNET_IP;
   buffer[1] = func;
   buffer[2] = (msgLength & 0xFF00) >> 8;
@@ -10,11 +11,11 @@ export const encode = (buffer: Buffer, func: number, msgLength: number) => {
   return baEnum.BVLC_HEADER_LENGTH;
 };
 
-export const decode = (buffer: Buffer, offset: number) => {
-  let len;
+export const decode = (buffer: Buffer, offset: number): BvlcPacket | undefined => {
+  let len: number;
   const func = buffer[1];
   const msgLength = (buffer[2] << 8) | (buffer[3] << 0);
-  if (buffer[0] !== baEnum.BVLL_TYPE_BACNET_IP || buffer.length !== msgLength) return;
+  if (buffer[0] !== baEnum.BVLL_TYPE_BACNET_IP || buffer.length !== msgLength) return undefined;
   switch (func) {
     case baEnum.BvlcResultPurpose.BVLC_RESULT:
     case baEnum.BvlcResultPurpose.ORIGINAL_UNICAST_NPDU:
@@ -33,9 +34,9 @@ export const decode = (buffer: Buffer, offset: number) => {
     case baEnum.BvlcResultPurpose.READ_BROADCAST_DISTRIBUTION_TABLE_ACK:
     case baEnum.BvlcResultPurpose.READ_FOREIGN_DEVICE_TABLE_ACK:
     case baEnum.BvlcResultPurpose.SECURE_BVLL:
-      return;
+      return undefined;
     default:
-      return;
+      return undefined;
   }
   return {
     len: len,
