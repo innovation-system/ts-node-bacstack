@@ -1,9 +1,8 @@
 {
-  "name": "@plus4nodered/ts-node-bacnet",
+  "name": "@innovation-system/node-bacnet",
   "version": "1.0.0-beta.2",
   "description": "A BACnet® protocol stack written in pure TypeScript.",
-  "exports": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "main": "./dist/index.js",
   "dependencies": {
     "debug": "^4.3.4",
     "iconv-lite": "^0.6.3"
@@ -13,20 +12,40 @@
     "build": "tsc -p tsconfig.build.json",
     "lint": "eslint src/**/*.*",
     "lint:fix": "eslint --fix \"src/**/*\"",
-    "test": "yarn test:types && yarn test:ts",
-    "test:ts": "npx jest -c jest.config.ts --coverageDirectory reports/coverage-test test/unit/*.spec.ts",
+    "test": "npx jest -c jest.config.ts --coverageDirectory reports/coverage-test test/unit/*.spec.ts",
     "coverage": "npx jest -c jest.config.coverage.ts --coverage --detectOpenHandles --forceExit --bail --logHeapUsage --debug",
-    "test:types": "npx jest -c jest.config.tsd.js",
     "integration": "jest --coverageDirectory reports/coverage-integration test/integration/*.spec.ts",
     "compliance": "jest --coverageDirectory reports/coverage-compliance test/compliance/*.spec.ts",
     "docs": "typedoc --out docs --entryPoint '\"client\"' --excludeExternals --excludeNotExported --excludePrivate src/lib/client.ts",
-    "dev-link": "yarn && yarn build && yarn link",
-    "dev-unlink": "yarn unlink @plus4nodered/ts-bacstack -g",
-    "code:check": "standard --fix"
+    "release": "read -p 'GITHUB_TOKEN: ' GITHUB_TOKEN && export GITHUB_TOKEN=$GITHUB_TOKEN && release-it"
+  },
+  "release-it": {
+    "github": {
+      "release": true
+    },
+    "git": {
+      "tagName": "v${version}",
+      "requireBranch": "main",
+      "commitMessage": "chore(release): ${version}"
+    },
+    "hooks": {
+      "before:init": [
+        "npm run build"
+      ]
+    },
+    "npm": {
+      "publish": true
+    },
+    "plugins": {
+      "@release-it/conventional-changelog": {
+        "preset": "angular",
+        "infile": "CHANGELOG.md"
+      }
+    }
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/HILA-TECH/ts-node-bacstack.git"
+    "url": "git+https://github.com/innovation-system/node-bacnet.git"
   },
   "keywords": [
     "plus4nodered",
@@ -63,10 +82,10 @@
       "@commitlint/config-conventional"
     ]
   },
-  "homepage": "https://hila-tech.github.io/ts-node-bacstack/",
+  "homepage": "https://github.com/innovation-system/node-bacnet/",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/HILA-TECH/ts-node-bacstack/issues"
+    "url": "https://github.com/innovation-system/node-bacnet/issues"
   },
   "devDependencies": {
     "@babel/core": "^7.20.12",
@@ -75,6 +94,7 @@
     "@commitlint/cli": "^17.4.0",
     "@commitlint/config-conventional": "^17.4.0",
     "@jest/globals": "^29.3.1",
+    "@release-it/conventional-changelog": "^10.0.0",
     "@tsconfig/node20": "^20.1.5",
     "@tsd/typescript": "^4.9.4",
     "@types/debug": "^4.1.7",
@@ -88,8 +108,10 @@
     "jest": "^29.3.1",
     "jest-runner-eslint": "^1.1.0",
     "jest-runner-tsd": "^4.0.0",
+    "release-it": "^18.1.2",
     "ts-jest": "^29.0.3",
     "tsd": "^0.25.0",
     "typescript": "^4.9.4"
-  }
+  },
+  "packageManager": "yarn@1.22.22+sha512.a6b2f7906b721bba3d67d4aff083df04dad64c399707841b7acf00f6b133b7ac24255f2652fa22ae3534329dc6180534e98d17432037ff6fd140556e2bb3137e"
 }

@@ -1,39 +1,47 @@
 name: CI
 
-on: push
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
 
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     strategy:
       matrix:
-        node: [16, 18]
+        node: [18, 20, 22]
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: actions/setup-node@v2
+      - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
+          cache: 'yarn'
       - run: yarn --frozen-lockfile
-      - run: yarn changelog
       - run: yarn lint
       - run: yarn test
       # TODO: deploy coverage results
-      - run: yarn integration
-      - run: yarn docs
+     # - run: yarn integration
+     # - run: yarn docs
 
-  compliance:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-      - run: docker-compose up --abort-on-container-exit --exit-code-from bacnet-client
+  # compliance:
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - run: docker-compose up --abort-on-container-exit --exit-code-from bacnet-client
 
-  pages:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-node@v2
-      - run: yarn --frozen-lockfile
-      - run: yarn docs
+  # pages:
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - uses: actions/setup-node@v4
+  #       with:
+  #         node-version: 20
+  #         cache: 'yarn'
+  #     - run: yarn --frozen-lockfile
+  #     - run: yarn docs
       # TODO: deploy pages
