@@ -1,27 +1,30 @@
 {
+	"extends": "@tsconfig/node20/tsconfig.json",
 	"compilerOptions": {
-		"module": "commonjs",
+		"outDir": "./dist",
 		"declaration": true,
 		"removeComments": true,
 		"emitDecoratorMetadata": true,
 		"experimentalDecorators": true,
 		"allowSyntheticDefaultImports": true,
-		"target": "es2017",
 		"sourceMap": true,
-		"outDir": "./dist",
-		"baseUrl": "./",
 		"incremental": true,
 		"skipLibCheck": true,
+		"preserveSymlinks": true,
+		"esModuleInterop": true,
+		"resolveJsonModule": true,
 		"strictNullChecks": false,
 		"noImplicitAny": false,
 		"strictBindCallApply": false,
 		"forceConsistentCasingInFileNames": false,
-		"noFallthroughCasesInSwitch": false,
-		"preserveSymlinks": true,
-		"esModuleInterop": true,
-		"resolveJsonModule": true
+		"noFallthroughCasesInSwitch": false
 	},
+	"include": [
+		"src/**/*.ts",
+		"test/**/*.ts"
+	],
 	"exclude": [
-		"dist"
+		"dist",
+		"node_modules",
 	]
 }

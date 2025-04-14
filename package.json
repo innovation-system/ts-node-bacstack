@@ -51,7 +51,7 @@
     }
   ],
   "engines": {
-    "node": ">= 16"
+    "node": ">= 20"
   },
   "files": [
     "dist/**/*.js",
@@ -75,6 +75,7 @@
     "@commitlint/cli": "^17.4.0",
     "@commitlint/config-conventional": "^17.4.0",
     "@jest/globals": "^29.3.1",
+    "@tsconfig/node20": "^20.1.5",
     "@tsd/typescript": "^4.9.4",
     "@types/debug": "^4.1.7",
     "@types/jest": "^29.2.5",
