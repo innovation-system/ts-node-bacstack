@@ -12,29 +12,46 @@ import {
   BACNetPropertyState,
   BACNetDevObjRef,
   BACNetObjectID,
-  BACNetPropertyID
+  BACNetPropertyID,
+  DecodeResult,
+  TagResult,
+  ObjectIdResult,
+  ApplicationDataResult,
+  BACNetReadAccessResult,
+  ReadAccessResultDecode,
+  CharacterStringResult,
+  CalendarDateResult,
+  CalendarDateRangeResult,
+  CalendarWeekDayResult,
+  CalendarResult,
+  AppDataResult,
+  DeviceObjPropertyRefResult,
+  ReadAccessSpecResult,
+  CovSubscriptionResult,
+  ContextTagWithLengthResult,
+  ContextCharacterStringResult
 } from './types';
 
-const getBuffer = () => ({
+const getBuffer = (): EncodeBuffer => ({
   buffer: Buffer.alloc(1472),
   offset: 0
 });
 
-const getSignedLength = (value: number) => {
+const getSignedLength = (value: number): number => {
   if ((value >= -128) && (value < 128)) return 1;
   else if ((value >= -32768) && (value < 32768)) return 2;
   else if ((value > -8388608) && (value < 8388608)) return 3;
   else return 4;
 };
 
-const getUnsignedLength = (value: number) => {
+const getUnsignedLength = (value: number): number => {
   if (value < 0x100) return 1;
   else if (value < 0x10000) return 2;
   else if (value < 0x1000000) return 3;
   else return 4;
 };
 
-const getEncodingType = (encoding: number, decodingBuffer?: Buffer, decodingOffset?: number) => {
+const getEncodingType = (encoding: number, decodingBuffer?: Buffer, decodingOffset?: number): string => {
   switch (encoding) {
     case baEnum.CharacterStringEncoding.UTF_8:
       return 'utf8';
@@ -56,49 +73,49 @@ const getEncodingType = (encoding: number, decodingBuffer?: Buffer, decodingOffs
   }
 };
 
-const encodeUnsigned = (buffer: EncodeBuffer, value: number, length: number) => {
+const encodeUnsigned = (buffer: EncodeBuffer, value: number, length: number): void => {
   buffer.buffer.writeUIntBE(value, buffer.offset, length);
   buffer.offset += length;
 };
 
-const encodeBacnetUnsigned = (buffer: EncodeBuffer, value: number) => {
+const encodeBacnetUnsigned = (buffer: EncodeBuffer, value: number): void => {
   encodeUnsigned(buffer, value, getUnsignedLength(value));
 };
 
-const encodeSigned = (buffer: EncodeBuffer, value: number, length: number) => {
+const encodeSigned = (buffer: EncodeBuffer, value: number, length: number): void => {
   buffer.buffer.writeIntBE(value, buffer.offset, length);
   buffer.offset += length;
 };
 
-const encodeBacnetSigned = (buffer: EncodeBuffer, value: number) => {
+const encodeBacnetSigned = (buffer: EncodeBuffer, value: number): void => {
   encodeSigned(buffer, value, getSignedLength(value));
 };
 
-const encodeBacnetReal = (buffer: EncodeBuffer, value: number) => {
+const encodeBacnetReal = (buffer: EncodeBuffer, value: number): void => {
   buffer.buffer.writeFloatBE(value, buffer.offset);
   buffer.offset += 4;
 };
 
-const encodeBacnetDouble = (buffer: EncodeBuffer, value: number) => {
+const encodeBacnetDouble = (buffer: EncodeBuffer, value: number): void => {
   buffer.buffer.writeDoubleBE(value, buffer.offset);
   buffer.offset += 8;
 };
 
-export const decodeUnsigned = (buffer: Buffer, offset: number, length: number) => ({
+export const decodeUnsigned = (buffer: Buffer, offset: number, length: number): DecodeResult<number> => ({
   len: length,
   value: buffer.readUIntBE(offset, length)
 });
 
-export const decodeEnumerated = (buffer: Buffer, offset: number, lenValue: number) => {
+export const decodeEnumerated = (buffer: Buffer, offset: number, lenValue: number): DecodeResult<number> => {
   return decodeUnsigned(buffer, offset, lenValue);
 };
 
-export const encodeBacnetObjectId = (buffer: EncodeBuffer, objectType: number, instance: number) => {
+export const encodeBacnetObjectId = (buffer: EncodeBuffer, objectType: number, instance: number): void => {
   const value = (((objectType & baEnum.ASN1_MAX_OBJECT) << baEnum.ASN1_INSTANCE_BITS) | (instance & baEnum.ASN1_MAX_INSTANCE)) >>> 0;
   encodeUnsigned(buffer, value, 4);
 };
 
-export const encodeTag = (buffer: EncodeBuffer, tagNumber: number, contextSpecific: boolean, lenValueType: number) => {
+export const encodeTag = (buffer: EncodeBuffer, tagNumber: number, contextSpecific: boolean, lenValueType: number): void => {
   let len = 1;
   const tmp = new Array(3);
   tmp[0] = 0;
@@ -114,67 +131,71 @@ export const encodeTag = (buffer: EncodeBuffer, tagNumber: number, contextSpecif
   }
   if (lenValueType <= 4) {
     tmp[0] |= lenValueType;
-    Buffer.from(tmp).copy(buffer.buffer, buffer.offset, 0, len);
+    const tmpBuffer = Buffer.from(tmp);
+    tmpBuffer.copy(buffer.buffer as Buffer, buffer.offset, 0, len);
     buffer.offset += len;
   } else {
     tmp[0] |= 5;
     if (lenValueType <= 253) {
       tmp[len++] = lenValueType;
-      Buffer.from(tmp).copy(buffer.buffer, buffer.offset, 0, len);
+      const tmpBuffer = Buffer.from(tmp);
+      tmpBuffer.copy(buffer.buffer as Buffer, buffer.offset, 0, len);
       buffer.offset += len;
     } else if (lenValueType <= 65535) {
       tmp[len++] = 254;
-      Buffer.from(tmp).copy(buffer.buffer, buffer.offset, 0, len);
+      const tmpBuffer = Buffer.from(tmp);
+      tmpBuffer.copy(buffer.buffer as Buffer, buffer.offset, 0, len);
       buffer.offset += len;
       encodeUnsigned(buffer, lenValueType, 2);
     } else {
       tmp[len++] = 255;
-      Buffer.from(tmp).copy(buffer.buffer, buffer.offset, 0, len);
+      const tmpBuffer = Buffer.from(tmp);
+      tmpBuffer.copy(buffer.buffer as Buffer, buffer.offset, 0, len);
       buffer.offset += len;
       encodeUnsigned(buffer, lenValueType, 4);
     }
   }
 };
 
-const encodeBacnetEnumerated = (buffer: EncodeBuffer, value: number) => {
+const encodeBacnetEnumerated = (buffer: EncodeBuffer, value: number): void => {
   encodeBacnetUnsigned(buffer, value);
 };
 
-const isExtendedTagNumber = (x: number) => {
+const isExtendedTagNumber = (x: number): boolean => {
   return (x & 0xF0) === 0xF0;
 };
 
-const isExtendedValue = (x: number) => {
+const isExtendedValue = (x: number): boolean => {
   return (x & 0x07) === 5;
 };
 
-const isContextSpecific = (x: number) => {
+const isContextSpecific = (x: number): boolean => {
   return (x & 0x8) === 0x8;
 };
 
-const isOpeningTag = (x: number) => {
+const isOpeningTag = (x: number): boolean => {
   return (x & 0x07) === 6;
 };
 
-const isClosingTag = (x: number) => {
+const isClosingTag = (x: number): boolean => {
   return (x & 0x07) === 7;
 };
 
-export const encodeContextReal = (buffer: EncodeBuffer, tagNumber: number, value: number) => {
+export const encodeContextReal = (buffer: EncodeBuffer, tagNumber: number, value: number): void => {
   encodeTag(buffer, tagNumber, true, 4);
   encodeBacnetReal(buffer, value);
 };
 
-export const encodeContextUnsigned = (buffer: EncodeBuffer, tagNumber: number, value: number) => {
+export const encodeContextUnsigned = (buffer: EncodeBuffer, tagNumber: number, value: number): void => {
   encodeTag(buffer, tagNumber, true, getUnsignedLength(value));
   encodeBacnetUnsigned(buffer, value);
 };
 
-export const encodeContextEnumerated = (buffer: EncodeBuffer, tagNumber: number, value: number) => {
+export const encodeContextEnumerated = (buffer: EncodeBuffer, tagNumber: number, value: number): void => {
   encodeContextUnsigned(buffer, tagNumber, value);
 };
 
-const encodeOctetString = (buffer: EncodeBuffer, octetString: number[], octetOffset: number, octetCount: number) => {
+const encodeOctetString = (buffer: EncodeBuffer, octetString: number[], octetOffset: number, octetCount: number): void => {
   if (octetString) {
     for (let i = octetOffset; i < (octetOffset + octetCount); i++) {
       buffer.buffer[buffer.offset++] = octetString[i];
@@ -182,30 +203,30 @@ const encodeOctetString = (buffer: EncodeBuffer, octetString: number[], octetOff
   }
 };
 
-export const encodeApplicationOctetString = (buffer: EncodeBuffer, octetString: number[], octetOffset: number, octetCount: number) => {
+export const encodeApplicationOctetString = (buffer: EncodeBuffer, octetString: number[], octetOffset: number, octetCount: number): void => {
   encodeTag(buffer, baEnum.ApplicationTags.OCTET_STRING, false, octetCount);
   encodeOctetString(buffer, octetString, octetOffset, octetCount);
 };
 
-const encodeApplicationNull = (buffer: EncodeBuffer) => {
+const encodeApplicationNull = (buffer: EncodeBuffer): void => {
   buffer.buffer[buffer.offset++] = baEnum.ApplicationTags.NULL;
 };
 
-export const encodeApplicationBoolean = (buffer: EncodeBuffer, booleanValue: boolean) => {
+export const encodeApplicationBoolean = (buffer: EncodeBuffer, booleanValue: boolean): void => {
   encodeTag(buffer, baEnum.ApplicationTags.BOOLEAN, false, booleanValue ? 1 : 0);
 };
 
-const encodeApplicationReal = (buffer: EncodeBuffer, value: number) => {
+const encodeApplicationReal = (buffer: EncodeBuffer, value: number): void => {
   encodeTag(buffer, baEnum.ApplicationTags.REAL, false, 4);
   encodeBacnetReal(buffer, value);
 };
 
-const encodeApplicationDouble = (buffer: EncodeBuffer, value: number) => {
+const encodeApplicationDouble = (buffer: EncodeBuffer, value: number): void => {
   encodeTag(buffer, baEnum.ApplicationTags.DOUBLE, false, 8);
   encodeBacnetDouble(buffer, value);
 };
 
-const bitstringBytesUsed = (bitString: BACNetBitString) => {
+const bitstringBytesUsed = (bitString: BACNetBitString): number => {
   let len = 0;
   if (bitString.bitsUsed > 0) {
     const lastBit = bitString.bitsUsed - 1;
@@ -215,7 +236,7 @@ const bitstringBytesUsed = (bitString: BACNetBitString) => {
   return len;
 };
 
-export const encodeApplicationObjectId = (buffer: EncodeBuffer, objectType: number, instance: number) => {
+export const encodeApplicationObjectId = (buffer: EncodeBuffer, objectType: number, instance: number): void => {
   const tmp = getBuffer();
   encodeBacnetObjectId(tmp, objectType, instance);
   encodeTag(buffer, baEnum.ApplicationTags.OBJECTIDENTIFIER, false, tmp.offset);
@@ -223,7 +244,7 @@ export const encodeApplicationObjectId = (buffer: EncodeBuffer, objectType: numb
   buffer.offset += tmp.offset;
 };
 
-export const encodeApplicationUnsigned = (buffer: EncodeBuffer, value: number) => {
+export const encodeApplicationUnsigned = (buffer: EncodeBuffer, value: number): void => {
   const tmp = getBuffer();
   encodeBacnetUnsigned(tmp, value);
   encodeTag(buffer, baEnum.ApplicationTags.UNSIGNED_INTEGER, false, tmp.offset);
@@ -231,7 +252,7 @@ export const encodeApplicationUnsigned = (buffer: EncodeBuffer, value: number) =
   buffer.offset += tmp.offset;
 };
 
-export const encodeApplicationEnumerated = (buffer: EncodeBuffer, value: number) => {
+export const encodeApplicationEnumerated = (buffer: EncodeBuffer, value: number): void => {
   const tmp = getBuffer();
   encodeBacnetEnumerated(tmp, value);
   encodeTag(buffer, baEnum.ApplicationTags.ENUMERATED, false, tmp.offset);
@@ -239,7 +260,7 @@ export const encodeApplicationEnumerated = (buffer: EncodeBuffer, value: number)
   buffer.offset += tmp.offset;
 };
 
-export const encodeApplicationSigned = (buffer: EncodeBuffer, value: number) => {
+export const encodeApplicationSigned = (buffer: EncodeBuffer, value: number): void => {
   const tmp = getBuffer();
   encodeBacnetSigned(tmp, value);
   encodeTag(buffer, baEnum.ApplicationTags.SIGNED_INTEGER, false, tmp.offset);
@@ -247,7 +268,7 @@ export const encodeApplicationSigned = (buffer: EncodeBuffer, value: number) => 
   buffer.offset += tmp.offset;
 };
 
-const byteReverseBits = (inByte: number) => {
+const byteReverseBits = (inByte: number): number => {
   let outByte = 0;
   if ((inByte & 1) > 0) {
     outByte |= 0x80;
@@ -276,7 +297,7 @@ const byteReverseBits = (inByte: number) => {
   return outByte;
 };
 
-const bitstringOctet = (bitString: BACNetBitString, octetIndex: number) => {
+const bitstringOctet = (bitString: BACNetBitString, octetIndex: number): number => {
   let octet = 0;
   if (bitString.value) {
     if (octetIndex < baEnum.ASN1_MAX_BITSTRING_BYTES) {
@@ -286,7 +307,7 @@ const bitstringOctet = (bitString: BACNetBitString, octetIndex: number) => {
   return octet;
 };
 
-const encodeBitstring = (buffer: EncodeBuffer, bitString: BACNetBitString) => {
+const encodeBitstring = (buffer: EncodeBuffer, bitString: BACNetBitString): void => {
   if (bitString.bitsUsed === 0) {
     buffer.buffer[buffer.offset++] = 0;
   } else {
@@ -299,14 +320,14 @@ const encodeBitstring = (buffer: EncodeBuffer, bitString: BACNetBitString) => {
   }
 };
 
-export const encodeApplicationBitstring = (buffer: EncodeBuffer, bitString: BACNetBitString) => {
+export const encodeApplicationBitstring = (buffer: EncodeBuffer, bitString: BACNetBitString): void => {
   let bitStringEncodedLength = 1;
   bitStringEncodedLength += bitstringBytesUsed(bitString);
   encodeTag(buffer, baEnum.ApplicationTags.BIT_STRING, false, bitStringEncodedLength);
   encodeBitstring(buffer, bitString);
 };
 
-const encodeBacnetDate = (buffer: EncodeBuffer, value: Date) => {
+const encodeBacnetDate = (buffer: EncodeBuffer, value: Date): void => {
   if (value === new Date(1, 1, 1)) {
     buffer.buffer[buffer.offset++] = 0xFF;
     buffer.buffer[buffer.offset++] = 0xFF;
@@ -326,36 +347,36 @@ const encodeBacnetDate = (buffer: EncodeBuffer, value: Date) => {
   buffer.buffer[buffer.offset++] = (value.getDay() === 0) ? 7 : value.getDay();
 };
 
-export const encodeApplicationDate = (buffer: EncodeBuffer, value: Date) => {
+export const encodeApplicationDate = (buffer: EncodeBuffer, value: Date): void => {
   encodeTag(buffer, baEnum.ApplicationTags.DATE, false, 4);
   encodeBacnetDate(buffer, value);
 };
 
-const encodeBacnetTime = (buffer: EncodeBuffer, value: Date) => {
+const encodeBacnetTime = (buffer: EncodeBuffer, value: Date): void => {
   buffer.buffer[buffer.offset++] = value.getHours();
   buffer.buffer[buffer.offset++] = value.getMinutes();
   buffer.buffer[buffer.offset++] = value.getSeconds();
   buffer.buffer[buffer.offset++] = value.getMilliseconds() / 10;
 };
 
-export const encodeApplicationTime = (buffer: EncodeBuffer, value: Date) => {
+export const encodeApplicationTime = (buffer: EncodeBuffer, value: Date): void => {
   encodeTag(buffer, baEnum.ApplicationTags.TIME, false, 4);
   encodeBacnetTime(buffer, value);
 };
 
-const bacappEncodeDatetime = (buffer: EncodeBuffer, value: Date) => {
+const bacappEncodeDatetime = (buffer: EncodeBuffer, value: Date): void => {
   if (value !== new Date(1, 1, 1)) {
     encodeApplicationDate(buffer, value);
     encodeApplicationTime(buffer, value);
   }
 };
 
-export const encodeContextObjectId = (buffer: EncodeBuffer, tagNumber: number, objectType: number, instance: number) => {
+export const encodeContextObjectId = (buffer: EncodeBuffer, tagNumber: number, objectType: number, instance: number): void => {
   encodeTag(buffer, tagNumber, true, 4);
   encodeBacnetObjectId(buffer, objectType, instance);
 };
 
-export const encodeOpeningTag = (buffer: EncodeBuffer, tagNumber: number) => {
+export const encodeOpeningTag = (buffer: EncodeBuffer, tagNumber: number): void => {
   let len = 1;
   const tmp = new Array(2);
   tmp[0] = 0x8;
@@ -371,7 +392,7 @@ export const encodeOpeningTag = (buffer: EncodeBuffer, tagNumber: number) => {
   buffer.offset += len;
 };
 
-export const encodeClosingTag = (buffer: EncodeBuffer, tagNumber: number) => {
+export const encodeClosingTag = (buffer: EncodeBuffer, tagNumber: number): void => {
   let len = 1;
   const tmp = new Array(2);
   tmp[0] = 0x8;
@@ -387,7 +408,7 @@ export const encodeClosingTag = (buffer: EncodeBuffer, tagNumber: number) => {
   buffer.offset += len;
 };
 
-export const encodeReadAccessSpecification = (buffer: EncodeBuffer, value: BACNetReadAccessSpecification) => {
+export const encodeReadAccessSpecification = (buffer: EncodeBuffer, value: BACNetReadAccessSpecification): void => {
   encodeContextObjectId(buffer, 0, value.objectId.type, value.objectId.instance);
   encodeOpeningTag(buffer, 1);
   value.properties.forEach((p) => {
@@ -399,13 +420,13 @@ export const encodeReadAccessSpecification = (buffer: EncodeBuffer, value: BACNe
   encodeClosingTag(buffer, 1);
 };
 
-export const encodeContextBoolean = (buffer: EncodeBuffer, tagNumber: number, booleanValue: boolean) => {
+export const encodeContextBoolean = (buffer: EncodeBuffer, tagNumber: number, booleanValue: boolean): void => {
   encodeTag(buffer, tagNumber, true, 1);
   buffer.buffer.writeUInt8(booleanValue ? 1 : 0, buffer.offset);
   buffer.offset += 1;
 };
 
-const encodeCovSubscription = (buffer: EncodeBuffer, value: BACNetCovSubscription) => {
+const encodeCovSubscription = (buffer: EncodeBuffer, value: BACNetCovSubscription): void => {
   encodeOpeningTag(buffer, 0);
   encodeOpeningTag(buffer, 0);
   encodeOpeningTag(buffer, 1);
@@ -433,7 +454,7 @@ const encodeCovSubscription = (buffer: EncodeBuffer, value: BACNetCovSubscriptio
   }
 };
 
-export const bacappEncodeApplicationData = (buffer: EncodeBuffer, value: BACNetAppData) => {
+export const bacappEncodeApplicationData = (buffer: EncodeBuffer, value: BACNetAppData): void => {
   if (value.value === null) {
     value.type = baEnum.ApplicationTags.NULL;
   }
@@ -497,7 +518,7 @@ export const bacappEncodeApplicationData = (buffer: EncodeBuffer, value: BACNetA
   }
 };
 
-const bacappEncodeDeviceObjPropertyRef = (buffer: EncodeBuffer, value: BACNetDevObjRef) => {
+const bacappEncodeDeviceObjPropertyRef = (buffer: EncodeBuffer, value: BACNetDevObjRef): void => {
   encodeContextObjectId(buffer, 0, value.objectId.type, value.objectId.instance);
   encodeContextEnumerated(buffer, 1, value.id);
   if (value.arrayIndex !== baEnum.ASN1_ARRAY_ALL) {
@@ -508,13 +529,13 @@ const bacappEncodeDeviceObjPropertyRef = (buffer: EncodeBuffer, value: BACNetDev
   }
 };
 
-export const bacappEncodeContextDeviceObjPropertyRef = (buffer: EncodeBuffer, tagNumber: number, value: BACNetDevObjRef) => {
+export const bacappEncodeContextDeviceObjPropertyRef = (buffer: EncodeBuffer, tagNumber: number, value: BACNetDevObjRef): void => {
   encodeOpeningTag(buffer, tagNumber);
   bacappEncodeDeviceObjPropertyRef(buffer, value);
   encodeClosingTag(buffer, tagNumber);
 };
 
-export const bacappEncodePropertyState = (buffer: EncodeBuffer, value: BACNetPropertyState) => {
+export const bacappEncodePropertyState = (buffer: EncodeBuffer, value: BACNetPropertyState): void => {
   switch (value.type) {
     case baEnum.PropertyStates.BOOLEAN_VALUE:
       encodeContextBoolean(buffer, 0, value.state === 1 ? true : false);
@@ -563,23 +584,23 @@ export const bacappEncodePropertyState = (buffer: EncodeBuffer, value: BACNetPro
   }
 };
 
-export const encodeContextBitstring = (buffer: EncodeBuffer, tagNumber: number, bitString: BACNetBitString) => {
+export const encodeContextBitstring = (buffer: EncodeBuffer, tagNumber: number, bitString: BACNetBitString): void => {
   const bitStringEncodedLength = bitstringBytesUsed(bitString) + 1;
   encodeTag(buffer, tagNumber, true, bitStringEncodedLength);
   encodeBitstring(buffer, bitString);
 };
 
-export const encodeContextSigned = (buffer: EncodeBuffer, tagNumber: number, value: number) => {
+export const encodeContextSigned = (buffer: EncodeBuffer, tagNumber: number, value: number): void => {
   encodeTag(buffer, tagNumber, true, getSignedLength(value));
   encodeBacnetSigned(buffer, value);
 };
 
-const encodeContextTime = (buffer: EncodeBuffer, tagNumber: number, value: Date) => {
+const encodeContextTime = (buffer: EncodeBuffer, tagNumber: number, value: Date): void => {
   encodeTag(buffer, tagNumber, true, 4);
   encodeBacnetTime(buffer, value);
 };
 
-const bacappEncodeContextDatetime = (buffer: EncodeBuffer, tagNumber: number, value: Date) => {
+const bacappEncodeContextDatetime = (buffer: EncodeBuffer, tagNumber: number, value: Date): void => {
   if (value !== new Date(1, 1, 1)) {
     encodeOpeningTag(buffer, tagNumber);
     bacappEncodeDatetime(buffer, value);
@@ -587,7 +608,7 @@ const bacappEncodeContextDatetime = (buffer: EncodeBuffer, tagNumber: number, va
   }
 };
 
-export const decodeTagNumber = (buffer: Buffer, offset: number) => {
+export const decodeTagNumber = (buffer: Buffer, offset: number): TagResult => {
   let len = 1;
   let tagNumber: number;
   if (isExtendedTagNumber(buffer[offset])) {
@@ -602,30 +623,30 @@ export const decodeTagNumber = (buffer: Buffer, offset: number) => {
   };
 };
 
-export const decodeIsContextTag = (buffer: Buffer, offset: number, tagNumber: number) => {
+export const decodeIsContextTag = (buffer: Buffer, offset: number, tagNumber: number): boolean => {
   const result = decodeTagNumber(buffer, offset);
   return isContextSpecific(buffer[offset]) && result.tagNumber === tagNumber;
 };
 
-export const decodeIsOpeningTagNumber = (buffer: Buffer, offset: number, tagNumber: number) => {
+export const decodeIsOpeningTagNumber = (buffer: Buffer, offset: number, tagNumber: number): boolean => {
   const result = decodeTagNumber(buffer, offset);
   return isOpeningTag(buffer[offset]) && result.tagNumber === tagNumber;
 };
 
-export const decodeIsClosingTagNumber = (buffer: Buffer, offset: number, tagNumber: number) => {
+export const decodeIsClosingTagNumber = (buffer: Buffer, offset: number, tagNumber: number): boolean => {
   const result = decodeTagNumber(buffer, offset);
   return isClosingTag(buffer[offset]) && result.tagNumber === tagNumber;
 };
 
-export const decodeIsClosingTag = (buffer: Buffer, offset: number) => {
+export const decodeIsClosingTag = (buffer: Buffer, offset: number): boolean => {
   return (buffer[offset] & 0x07) === 7;
 };
 
-export const decodeIsOpeningTag = (buffer: Buffer, offset: number) => {
+export const decodeIsOpeningTag = (buffer: Buffer, offset: number): boolean => {
   return (buffer[offset] & 0x07) === 6;
 };
 
-export const decodeObjectId = (buffer: Buffer, offset: number) => {
+export const decodeObjectId = (buffer: Buffer, offset: number): ObjectIdResult => {
   const result = decodeUnsigned(buffer, offset, 4);
   const objectType = (result.value >> baEnum.ASN1_INSTANCE_BITS) & baEnum.ASN1_MAX_OBJECT;
   const instance = result.value & baEnum.ASN1_MAX_INSTANCE;
@@ -636,7 +657,7 @@ export const decodeObjectId = (buffer: Buffer, offset: number) => {
   };
 };
 
-const decodeObjectIdSafe = (buffer: Buffer, offset: number, lenValue: number) => {
+const decodeObjectIdSafe = (buffer: Buffer, offset: number, lenValue: number): ObjectIdResult => {
   if (lenValue !== 4) {
     return {
       len: 0,
@@ -648,8 +669,8 @@ const decodeObjectIdSafe = (buffer: Buffer, offset: number, lenValue: number) =>
   }
 };
 
-export const decodeTagNumberAndValue = (buffer: Buffer, offset: number) => {
-  let value: number;
+export const decodeTagNumberAndValue = (buffer: Buffer, offset: number): TagResult => {
+  let value = 0;
   const tag = decodeTagNumber(buffer, offset);
   let len = tag.len;
   if (isExtendedValue(buffer[offset])) {
@@ -681,14 +702,14 @@ export const decodeTagNumberAndValue = (buffer: Buffer, offset: number) => {
   };
 };
 
-export const bacappDecodeApplicationData = (buffer: Buffer, offset: number, maxOffset: number, objectType: number, propertyId: number): any => {
+export const bacappDecodeApplicationData = (buffer: Buffer, offset: number, maxOffset: number, objectType: number, propertyId: number): ApplicationDataResult | undefined => {
   if (!isContextSpecific(buffer[offset])) {
     const tag = decodeTagNumberAndValue(buffer, offset);
     if (tag) {
       const len = tag.len;
       const result = bacappDecodeData(buffer, offset + len, maxOffset, tag.tagNumber, tag.value);
-      if (!result) return;
-      const resObj: any = {
+      if (!result) return undefined;
+      const resObj: ApplicationDataResult = {
         len: len + result.len,
         type: result.type,
         value: result.value
@@ -700,17 +721,10 @@ export const bacappDecodeApplicationData = (buffer: Buffer, offset: number, maxO
   } else {
     return bacappDecodeContextApplicationData(buffer, offset, maxOffset, objectType, propertyId);
   }
+  return undefined;
 };
 
-interface BACNetReadAccessResult {
-  objectId: BACNetObjectID;
-  values: {
-    property: BACNetPropertyID;
-    value: any[];
-  }[];
-}
-
-export const encodeReadAccessResult = (buffer: EncodeBuffer, value: BACNetReadAccessResult) => {
+export const encodeReadAccessResult = (buffer: EncodeBuffer, value: BACNetReadAccessResult): void => {
   encodeContextObjectId(buffer, 0, value.objectId.type, value.objectId.instance);
   encodeOpeningTag(buffer, 1);
   value.values.forEach((item) => {
@@ -732,18 +746,25 @@ export const encodeReadAccessResult = (buffer: EncodeBuffer, value: BACNetReadAc
   encodeClosingTag(buffer, 1);
 };
 
-export const decodeReadAccessResult = (buffer: Buffer, offset: number, apduLen: number) => {
+export const decodeReadAccessResult = (buffer: Buffer, offset: number, apduLen: number): ReadAccessResultDecode | undefined => {
   let len = 0;
-  const value: any = {};
-  if (!decodeIsContextTag(buffer, offset + len, 0)) return;
-  len++;
-  let result: any = decodeObjectId(buffer, offset + len);
-  value.objectId = {
-    type: result.objectType,
-    instance: result.instance
+  const value: {
+    objectId: BACNetObjectID;
+    values: any[];
+  } = {
+    objectId: {type: 0, instance: 0},
+    values: []
   };
-  len += result.len;
-  if (!decodeIsOpeningTagNumber(buffer, offset + len, 1)) return;
+
+  if (!decodeIsContextTag(buffer, offset + len, 0)) return undefined;
+  len++;
+  const objectIdResult = decodeObjectId(buffer, offset + len);
+  value.objectId = {
+    type: objectIdResult.objectType,
+    instance: objectIdResult.instance
+  };
+  len += objectIdResult.len;
+  if (!decodeIsOpeningTagNumber(buffer, offset + len, 1)) return undefined;
   len++;
 
   const values = [];
@@ -753,29 +774,29 @@ export const decodeReadAccessResult = (buffer: Buffer, offset: number, apduLen: 
       len++;
       break;
     }
-    result = decodeTagNumberAndValue(buffer, offset + len);
-    len += result.len;
-    if (result.tagNumber !== 2) return;
-    result = decodeEnumerated(buffer, offset + len, result.value);
-    newEntry.id = result.value;
-    len += result.len;
+    const tagResult1 = decodeTagNumberAndValue(buffer, offset + len);
+    len += tagResult1.len;
+    if (tagResult1.tagNumber !== 2) return undefined;
+    const enumResult = decodeEnumerated(buffer, offset + len, tagResult1.value);
+    newEntry.id = enumResult.value;
+    len += enumResult.len;
 
-    result = decodeTagNumberAndValue(buffer, offset + len);
-    if (result.tagNumber === 3) {
-      len += result.len;
-      result = decodeUnsigned(buffer, offset + len, result.value);
-      newEntry.index = result.value;
-      len += result.len;
+    const tagResult2 = decodeTagNumberAndValue(buffer, offset + len);
+    if (tagResult2.tagNumber === 3) {
+      len += tagResult2.len;
+      const unsignedResult = decodeUnsigned(buffer, offset + len, tagResult2.value);
+      newEntry.index = unsignedResult.value;
+      len += unsignedResult.len;
     } else {
       newEntry.index = baEnum.ASN1_ARRAY_ALL;
     }
-    result = decodeTagNumberAndValue(buffer, offset + len);
-    len += result.len;
-    if (result.tagNumber === 4) {
+    const tagResult3 = decodeTagNumberAndValue(buffer, offset + len);
+    len += tagResult3.len;
+    if (tagResult3.tagNumber === 4) {
       const localValues = [];
       while ((len + offset) <= buffer.length && !decodeIsClosingTagNumber(buffer, offset + len, 4)) {
         const localResult = bacappDecodeApplicationData(buffer, offset + len, apduLen + offset - 1, value.objectId.type, newEntry.id);
-        if (!localResult) return;
+        if (!localResult) return undefined;
         len += localResult.len;
         const resObj: {value: any, type: number, encoding?: number} = {
           value: localResult.value,
@@ -785,7 +806,7 @@ export const decodeReadAccessResult = (buffer: Buffer, offset: number, apduLen: 
         if (localResult.encoding !== undefined) resObj.encoding = localResult.encoding;
         localValues.push(resObj);
       }
-      if (!decodeIsClosingTagNumber(buffer, offset + len, 4)) return;
+      if (!decodeIsClosingTagNumber(buffer, offset + len, 4)) return undefined;
       if ((localValues.length === 2) && (localValues[0].type === baEnum.ApplicationTags.DATE) && (localValues[1].type === baEnum.ApplicationTags.TIME)) {
         const date = localValues[0].value;
         const time = localValues[1].value;
@@ -795,19 +816,22 @@ export const decodeReadAccessResult = (buffer: Buffer, offset: number, apduLen: 
         newEntry.value = localValues;
       }
       len++;
-    } else if (result.tagNumber === 5) {
-      const err: any = {};
-      result = decodeTagNumberAndValue(buffer, offset + len);
-      len += result.len;
-      result = decodeEnumerated(buffer, offset + len, result.value);
-      len += result.len;
-      err.errorClass = result.value;
-      result = decodeTagNumberAndValue(buffer, offset + len);
-      len += result.len;
-      result = decodeEnumerated(buffer, offset + len, result.value);
-      len += result.len;
-      err.errorCode = result.value;
-      if (!decodeIsClosingTagNumber(buffer, offset + len, 5)) return;
+    } else if (tagResult3.tagNumber === 5) {
+      const err: {errorClass: number, errorCode: number} = {
+        errorClass: 0,
+        errorCode: 0
+      };
+      const errTagResult1 = decodeTagNumberAndValue(buffer, offset + len);
+      len += errTagResult1.len;
+      const errorClassResult = decodeEnumerated(buffer, offset + len, errTagResult1.value);
+      len += errorClassResult.len;
+      err.errorClass = errorClassResult.value;
+      const errTagResult2 = decodeTagNumberAndValue(buffer, offset + len);
+      len += errTagResult2.len;
+      const errorCodeResult = decodeEnumerated(buffer, offset + len, errTagResult2.value);
+      len += errorCodeResult.len;
+      err.errorCode = errorCodeResult.value;
+      if (!decodeIsClosingTagNumber(buffer, offset + len, 5)) return undefined;
       len++;
       newEntry.value = [{
         type: baEnum.ApplicationTags.ERROR,
@@ -823,17 +847,17 @@ export const decodeReadAccessResult = (buffer: Buffer, offset: number, apduLen: 
   };
 };
 
-export const decodeSigned = (buffer: Buffer, offset: number, length: number) => ({
+export const decodeSigned = (buffer: Buffer, offset: number, length: number): DecodeResult<number> => ({
   len: length,
   value: buffer.readIntBE(offset, length)
 });
 
-export const decodeReal = (buffer: Buffer, offset: number) => ({
+export const decodeReal = (buffer: Buffer, offset: number): DecodeResult<number> => ({
   len: 4,
   value: buffer.readFloatBE(offset)
 });
 
-const decodeRealSafe = (buffer: Buffer, offset: number, lenValue: number) => {
+const decodeRealSafe = (buffer: Buffer, offset: number, lenValue: number): DecodeResult<number> => {
   if (lenValue !== 4) {
     return {
       len: lenValue,
@@ -844,12 +868,12 @@ const decodeRealSafe = (buffer: Buffer, offset: number, lenValue: number) => {
   }
 };
 
-const decodeDouble = (buffer: Buffer, offset: number) => ({
+const decodeDouble = (buffer: Buffer, offset: number): DecodeResult<number> => ({
   len: 8,
   value: buffer.readDoubleBE(offset)
 });
 
-const decodeDoubleSafe = (buffer: Buffer, offset: number, lenValue: number) => {
+const decodeDoubleSafe = (buffer: Buffer, offset: number, lenValue: number): DecodeResult<number> => {
   if (lenValue !== 8) {
     return {
       len: lenValue,
@@ -860,7 +884,7 @@ const decodeDoubleSafe = (buffer: Buffer, offset: number, lenValue: number) => {
   }
 };
 
-export const decodeOctetString = (buffer: Buffer, offset: number, maxLength: number, octetStringOffset: number, octetStringLength: number) => {
+export const decodeOctetString = (buffer: Buffer, offset: number, maxLength: number, octetStringOffset: number, octetStringLength: number): DecodeResult<number[]> => {
   const octetString = [];
   for (let i = octetStringOffset; i < (octetStringOffset + octetStringLength); i++) {
     octetString.push(buffer[offset + i]);
@@ -871,7 +895,7 @@ export const decodeOctetString = (buffer: Buffer, offset: number, maxLength: num
   };
 };
 
-const multiCharsetCharacterstringDecode = (buffer: Buffer, offset: number, maxLength: number, encoding: number, length: number) => {
+const multiCharsetCharacterstringDecode = (buffer: Buffer, offset: number, maxLength: number, encoding: number, length: number): CharacterStringResult => {
   const stringBuf = Buffer.alloc(length);
   buffer.copy(stringBuf, 0, offset, offset + length);
   return {
@@ -881,18 +905,18 @@ const multiCharsetCharacterstringDecode = (buffer: Buffer, offset: number, maxLe
   };
 };
 
-export const decodeCharacterString = (buffer: Buffer, offset: number, maxLength: number, lenValue: number) => {
+export const decodeCharacterString = (buffer: Buffer, offset: number, maxLength: number, lenValue: number): CharacterStringResult => {
   return multiCharsetCharacterstringDecode(buffer, offset + 1, maxLength, buffer[offset], lenValue - 1);
 };
 
-const bitstringSetBitsUsed = (bitString: BACNetBitString, bytesUsed: number, unusedBits: number) => {
+const bitstringSetBitsUsed = (bitString: BACNetBitString, bytesUsed: number, unusedBits: number): void => {
   bitString.bitsUsed = bytesUsed * 8;
   bitString.bitsUsed -= unusedBits;
 };
 
-export const decodeBitstring = (buffer: Buffer, offset: number, lenValue: number) => {
+export const decodeBitstring = (buffer: Buffer, offset: number, lenValue: number): DecodeResult<BACNetBitString> => {
   let len = 0;
-  const bitString: {value: number[], bitsUsed: 0} = {value: [], bitsUsed: 0};
+  const bitString: BACNetBitString = {value: [], bitsUsed: 0};
   if (lenValue > 0) {
     const bytesUsed = lenValue - 1;
     if (bytesUsed <= baEnum.ASN1_MAX_BITSTRING_BYTES) {
@@ -910,7 +934,7 @@ export const decodeBitstring = (buffer: Buffer, offset: number, lenValue: number
   };
 };
 
-export const decodeDate = (buffer: Buffer, offset: number) => {
+export const decodeDate = (buffer: Buffer, offset: number): DecodeResult<Date> => {
   let date: Date;
   const year = buffer[offset] + 1900;
   const month = buffer[offset + 1];
@@ -927,7 +951,7 @@ export const decodeDate = (buffer: Buffer, offset: number) => {
   };
 };
 
-const decodeDateSafe = (buffer: Buffer, offset: number, lenValue: number) => {
+const decodeDateSafe = (buffer: Buffer, offset: number, lenValue: number): DecodeResult<Date> => {
   if (lenValue !== 4) {
     return {
       len: lenValue,
@@ -938,7 +962,7 @@ const decodeDateSafe = (buffer: Buffer, offset: number, lenValue: number) => {
   }
 };
 
-export const decodeApplicationDate = (buffer: Buffer, offset: number) => {
+export const decodeApplicationDate = (buffer: Buffer, offset: number): DecodeResult<Date> | undefined => {
   const result = decodeTagNumber(buffer, offset);
   if (result.tagNumber === baEnum.ApplicationTags.DATE) {
     const value = decodeDate(buffer, offset + 1);
@@ -947,9 +971,10 @@ export const decodeApplicationDate = (buffer: Buffer, offset: number) => {
       value: value.value
     };
   }
+  return undefined;
 };
 
-export const decodeBacnetTime = (buffer: Buffer, offset: number) => {
+export const decodeBacnetTime = (buffer: Buffer, offset: number): DecodeResult<Date> => {
   let value: Date;
   const hour = buffer[offset + 0];
   const min = buffer[offset + 1];
@@ -967,7 +992,7 @@ export const decodeBacnetTime = (buffer: Buffer, offset: number) => {
   };
 };
 
-const decodeBacnetTimeSafe = (buffer: Buffer, offset: number, len: number) => {
+const decodeBacnetTimeSafe = (buffer: Buffer, offset: number, len: number): DecodeResult<Date> => {
   if (len !== 4) {
     return {len, value: new Date(1, 1, 1)};
   } else {
@@ -975,7 +1000,7 @@ const decodeBacnetTimeSafe = (buffer: Buffer, offset: number, len: number) => {
   }
 };
 
-export const decodeApplicationTime = (buffer: Buffer, offset: number) => {
+export const decodeApplicationTime = (buffer: Buffer, offset: number): DecodeResult<Date> | undefined => {
   const result = decodeTagNumber(buffer, offset);
   if (result.tagNumber === baEnum.ApplicationTags.TIME) {
     const value = decodeBacnetTime(buffer, offset + 1);
@@ -984,14 +1009,19 @@ export const decodeApplicationTime = (buffer: Buffer, offset: number) => {
       value: value.value
     };
   }
+  return undefined;
 };
 
-const decodeBacnetDatetime = (buffer: Buffer, offset: number) => {
+const decodeBacnetDatetime = (buffer: Buffer, offset: number): DecodeResult<Date> => {
   let len = 0;
   const rawDate = decodeApplicationDate(buffer, offset + len);
+  if (!rawDate) return {len: 0, value: new Date(1, 1, 1)};
+
   len += rawDate.len;
   const date = rawDate.value;
   const rawTime = decodeApplicationTime(buffer, offset + len);
+  if (!rawTime) return {len, value: date};
+
   len += rawTime.len;
   const time = rawTime.value;
   return {
@@ -1000,11 +1030,12 @@ const decodeBacnetDatetime = (buffer: Buffer, offset: number) => {
   };
 };
 
-const bacappDecodeData = (buffer: Buffer, offset: number, maxLength: number, tagDataType: number, lenValueType: number) => {
-  let result: any;
-  const value: any = {
+const bacappDecodeData = (buffer: Buffer, offset: number, maxLength: number, tagDataType: number, lenValueType: number): AppDataResult => {
+  let result;
+  const value: AppDataResult = {
     len: 0,
-    type: tagDataType
+    type: tagDataType,
+    value: null
   };
   switch (tagDataType) {
     case baEnum.ApplicationTags.NULL:
@@ -1075,7 +1106,7 @@ const bacappDecodeData = (buffer: Buffer, offset: number, maxLength: number, tag
   return value;
 };
 
-const bacappContextTagType = (property: number, tagNumber: number) => {
+const bacappContextTagType = (property: number, tagNumber: number): number => {
   let tag = 0;
   switch (property) {
     case baEnum.PropertyIdentifier.ACTUAL_SHED_LEVEL:
@@ -1195,24 +1226,24 @@ const bacappContextTagType = (property: number, tagNumber: number) => {
   return tag;
 };
 
-const decodeDeviceObjPropertyRef = (buffer: Buffer, offset: number) => {
+const decodeDeviceObjPropertyRef = (buffer: Buffer, offset: number): DeviceObjPropertyRefResult | undefined => {
   let len = 0;
-  let arrayIndex: any = baEnum.ASN1_ARRAY_ALL;
-  if (!decodeIsContextTag(buffer, offset + len, 0)) return;
+  // let arrayIndex = baEnum.ASN1_ARRAY_ALL;
+  if (!decodeIsContextTag(buffer, offset + len, 0)) return undefined;
   len++;
   let objectId = decodeObjectId(buffer, offset + len);
   len += objectId.len;
   let result = decodeTagNumberAndValue(buffer, offset + len);
   len += result.len;
-  if (result.tagNumber !== 1) return;
+  if (result.tagNumber !== 1) return undefined;
   const id = decodeEnumerated(buffer, offset + len, result.value);
   len += id.len;
   result = decodeTagNumberAndValue(buffer, offset + len);
   if (result.tagNumber === 2) {
     len += result.len;
     // FIXME: This doesn't seem to be used
-    arrayIndex = decodeUnsigned(buffer, offset + len, result.value);
-    len += arrayIndex.len;
+    const unsignedResult = decodeUnsigned(buffer, offset + len, result.value);
+    len += unsignedResult.len;
   }
   if (decodeIsContextTag(buffer, offset + len, 3)) {
     if (!isClosingTag(buffer[offset + len])) {
@@ -1230,44 +1261,49 @@ const decodeDeviceObjPropertyRef = (buffer: Buffer, offset: number) => {
   };
 };
 
-export const decodeReadAccessSpecification = (buffer: Buffer, offset: number, apduLen: number) => {
+export const decodeReadAccessSpecification = (buffer: Buffer, offset: number, apduLen: number): ReadAccessSpecResult | undefined => {
   let len = 0;
-  const value: any = {};
-  if (!decodeIsContextTag(buffer, offset + len, 0)) return;
-  len++;
-  let decodedValue: any = decodeObjectId(buffer, offset + len);
-  value.objectId = {
-    type: decodedValue.objectType,
-    instance: decodedValue.instance
+  const value: BACNetReadAccessSpecification = {
+    objectId: {type: 0, instance: 0},
+    properties: []
   };
-  len += decodedValue.len;
-  if (!decodeIsOpeningTagNumber(buffer, offset + len, 1)) return;
+
+  if (!decodeIsContextTag(buffer, offset + len, 0)) return undefined;
   len++;
-  const propertyIdAndArrayIndex = [];
+  const objectIdResult = decodeObjectId(buffer, offset + len);
+  value.objectId = {
+    type: objectIdResult.objectType,
+    instance: objectIdResult.instance
+  };
+  len += objectIdResult.len;
+  if (!decodeIsOpeningTagNumber(buffer, offset + len, 1)) return undefined;
+  len++;
+
+  const propertyIdAndArrayIndex: BACNetPropertyID[] = [];
   while ((apduLen - len) > 1 && !decodeIsClosingTagNumber(buffer, offset + len, 1)) {
-    const propertyRef: any = {};
-    if (!isContextSpecific(buffer[offset + len])) return;
-    const result = decodeTagNumberAndValue(buffer, offset + len);
-    len += result.len;
-    if (result.tagNumber !== 0) return;
-    if ((len + result.value) >= apduLen) return;
-    decodedValue = decodeEnumerated(buffer, offset + len, result.value);
-    propertyRef.id = decodedValue.value;
-    len += decodedValue.len;
-    propertyRef.index = baEnum.ASN1_ARRAY_ALL;
+    const propertyRef: BACNetPropertyID = {id: 0, index: baEnum.ASN1_ARRAY_ALL};
+    if (!isContextSpecific(buffer[offset + len])) return undefined;
+    const tagResult = decodeTagNumberAndValue(buffer, offset + len);
+    len += tagResult.len;
+    if (tagResult.tagNumber !== 0) return undefined;
+    if ((len + tagResult.value) >= apduLen) return undefined;
+    const enumResult = decodeEnumerated(buffer, offset + len, tagResult.value);
+    propertyRef.id = enumResult.value;
+    len += enumResult.len;
+
     if (isContextSpecific(buffer[offset + len]) && !isClosingTag(buffer[offset + len])) {
-      const tmp = decodeTagNumberAndValue(buffer, offset + len);
-      if (tmp.tagNumber === 1) {
-        len += tmp.len;
-        if ((len + tmp.value) >= apduLen) return;
-        decodedValue = decodeUnsigned(buffer, offset + len, tmp.value);
-        propertyRef.index = decodedValue.value;
-        len += decodedValue.len;
+      const indexTagResult = decodeTagNumberAndValue(buffer, offset + len);
+      if (indexTagResult.tagNumber === 1) {
+        len += indexTagResult.len;
+        if ((len + indexTagResult.value) >= apduLen) return undefined;
+        const unsignedResult = decodeUnsigned(buffer, offset + len, indexTagResult.value);
+        propertyRef.index = unsignedResult.value;
+        len += unsignedResult.len;
       }
     }
     propertyIdAndArrayIndex.push(propertyRef);
   }
-  if (!decodeIsClosingTagNumber(buffer, offset + len, 1)) return;
+  if (!decodeIsClosingTagNumber(buffer, offset + len, 1)) return undefined;
   len++;
   value.properties = propertyIdAndArrayIndex;
   return {
@@ -1276,47 +1312,59 @@ export const decodeReadAccessSpecification = (buffer: Buffer, offset: number, ap
   };
 };
 
-const decodeCovSubscription = (buffer: Buffer, offset: number, apduLen: number) => {
+const decodeCovSubscription = (buffer: Buffer, offset: number, apduLen: number): CovSubscriptionResult | undefined => {
   let len = 0;
-  const value: any = {};
-  let result: any;
-  let decodedValue: any;
-  value.recipient = {};
-  if (!decodeIsOpeningTagNumber(buffer, offset + len, 0)) return;
+  const value: BACNetCovSubscription = {
+    recipient: {
+      network: 0,
+      address: []
+    },
+    subscriptionProcessId: 0,
+    monitoredObjectId: {type: 0, instance: 0},
+    monitoredProperty: {id: 0, index: 0},
+    issueConfirmedNotifications: false,
+    timeRemaining: 0,
+    covIncrement: 0
+  };
+
+  let result;
+  let decodedValue;
+
+  if (!decodeIsOpeningTagNumber(buffer, offset + len, 0)) return undefined;
   len++;
-  if (!decodeIsOpeningTagNumber(buffer, offset + len, 0)) return;
+  if (!decodeIsOpeningTagNumber(buffer, offset + len, 0)) return undefined;
   len++;
-  if (!decodeIsOpeningTagNumber(buffer, offset + len, 1)) return;
+  if (!decodeIsOpeningTagNumber(buffer, offset + len, 1)) return undefined;
   len++;
   result = decodeTagNumberAndValue(buffer, offset + len);
   len += result.len;
-  if (result.tagNumber !== baEnum.ApplicationTags.UNSIGNED_INTEGER) return;
+  if (result.tagNumber !== baEnum.ApplicationTags.UNSIGNED_INTEGER) return undefined;
   decodedValue = decodeUnsigned(buffer, offset + len, result.value);
   len += decodedValue.len;
-  value.recipient.net = decodedValue.value;
+  value.recipient.network = decodedValue.value;
   result = decodeTagNumberAndValue(buffer, offset + len);
   len += result.len;
-  if (result.tagNumber !== baEnum.ApplicationTags.OCTET_STRING) return;
+  if (result.tagNumber !== baEnum.ApplicationTags.OCTET_STRING) return undefined;
   decodedValue = decodeOctetString(buffer, offset + len, apduLen, 0, result.value);
   len += decodedValue.len;
-  value.recipient.adr = decodedValue.value;
-  if (!decodeIsClosingTagNumber(buffer, offset + len, 1)) return;
+  value.recipient.address = decodedValue.value;
+  if (!decodeIsClosingTagNumber(buffer, offset + len, 1)) return undefined;
   len++;
-  if (!decodeIsClosingTagNumber(buffer, offset + len, 0)) return;
+  if (!decodeIsClosingTagNumber(buffer, offset + len, 0)) return undefined;
   len++;
   result = decodeTagNumberAndValue(buffer, offset + len);
   len += result.len;
-  if (result.tagNumber !== 1) return;
+  if (result.tagNumber !== 1) return undefined;
   decodedValue = decodeUnsigned(buffer, offset + len, result.value);
   len += decodedValue.len;
   value.subscriptionProcessId = decodedValue.value;
-  if (!decodeIsClosingTagNumber(buffer, offset + len, 0)) return;
+  if (!decodeIsClosingTagNumber(buffer, offset + len, 0)) return undefined;
   len++;
-  if (!decodeIsOpeningTagNumber(buffer, offset + len, 1)) return;
+  if (!decodeIsOpeningTagNumber(buffer, offset + len, 1)) return undefined;
   len++;
   result = decodeTagNumberAndValue(buffer, offset + len);
   len += result.len;
-  if (result.tagNumber !== 0) return;
+  if (result.tagNumber !== 0) return undefined;
   decodedValue = decodeObjectId(buffer, offset + len);
   len += decodedValue.len;
   value.monitoredObjectId = {
@@ -1325,10 +1373,9 @@ const decodeCovSubscription = (buffer: Buffer, offset: number, apduLen: number) 
   };
   result = decodeTagNumberAndValue(buffer, offset + len);
   len += result.len;
-  if (result.tagNumber !== 1) return;
+  if (result.tagNumber !== 1) return undefined;
   decodedValue = decodeEnumerated(buffer, offset + len, result.value);
   len += decodedValue.len;
-  value.monitoredProperty = {};
   value.monitoredProperty.id = decodedValue.value;
   result = decodeTagNumberAndValue(buffer, offset + len);
   if (result.tagNumber === 2) {
@@ -1339,23 +1386,23 @@ const decodeCovSubscription = (buffer: Buffer, offset: number, apduLen: number) 
   } else {
     value.monitoredProperty.index = baEnum.ASN1_ARRAY_ALL;
   }
-  if (!decodeIsClosingTagNumber(buffer, offset + len, 1)) return;
+  if (!decodeIsClosingTagNumber(buffer, offset + len, 1)) return undefined;
   len++;
   result = decodeTagNumberAndValue(buffer, offset + len);
   len += result.len;
-  if (result.tagNumber !== 2) return;
-  value.issueConfirmedNotifications = buffer[offset + len] > 0 ? true : false;
+  if (result.tagNumber !== 2) return undefined;
+  value.issueConfirmedNotifications = buffer[offset + len] > 0;
   len++;
   result = decodeTagNumberAndValue(buffer, offset + len);
   len += result.len;
-  if (result.tagNumber !== 3) return;
+  if (result.tagNumber !== 3) return undefined;
   decodedValue = decodeUnsigned(buffer, offset + len, result.value);
   len += decodedValue.len;
   value.timeRemaining = decodedValue.value;
   if (len < apduLen && !isClosingTag(buffer[offset + len])) {
     result = decodeTagNumberAndValue(buffer, offset + len);
     len += result.len;
-    if (result.tagNumber !== 4) return;
+    if (result.tagNumber !== 4) return undefined;
     decodedValue = decodeReal(buffer, offset + len);
     len += decodedValue.len;
     value.covIncrement = decodedValue.value;
@@ -1366,7 +1413,7 @@ const decodeCovSubscription = (buffer: Buffer, offset: number, apduLen: number) 
   };
 };
 
-const decodeCalendarDate = (buffer: Buffer, offset: number) => ({
+const decodeCalendarDate = (buffer: Buffer, offset: number): CalendarDateResult => ({
   len: 4,
   year: buffer[offset],
   month: buffer[offset + 1],
@@ -1374,7 +1421,7 @@ const decodeCalendarDate = (buffer: Buffer, offset: number) => ({
   wday: buffer[offset + 3]
 });
 
-const decodeCalendarDateRange = (buffer: Buffer, offset: number) => {
+const decodeCalendarDateRange = (buffer: Buffer, offset: number): CalendarDateRangeResult => {
   let len = 1;
   const startDate = decodeDate(buffer, offset + len);
   len += startDate.len + 1;
@@ -1387,14 +1434,14 @@ const decodeCalendarDateRange = (buffer: Buffer, offset: number) => {
   };
 };
 
-const decodeCalendarWeekDay = (buffer: Buffer, offset: number) => ({
+const decodeCalendarWeekDay = (buffer: Buffer, offset: number): CalendarWeekDayResult => ({
   len: 3,
   month: buffer[offset],
   week: buffer[offset + 1],
   wday: buffer[offset + 2]
 });
 
-const decodeCalendar = (buffer: Buffer, offset: number, apduLen: number) => {
+const decodeCalendar = (buffer: Buffer, offset: number, apduLen: number): CalendarResult | undefined => {
   let len = 0;
   const entries = [];
   while (len < apduLen) {
@@ -1423,14 +1470,15 @@ const decodeCalendar = (buffer: Buffer, offset: number, apduLen: number) => {
         };
     }
   }
+  return undefined;
 };
 
-const bacappDecodeContextApplicationData = (buffer: Buffer, offset: number, maxOffset: number, objectType: number, propertyId: number) => {
+const bacappDecodeContextApplicationData = (buffer: Buffer, offset: number, maxOffset: number, objectType: number, propertyId: number): ApplicationDataResult | undefined => {
   let len = 0;
   if (isContextSpecific(buffer[offset])) {
     if (propertyId === baEnum.PropertyIdentifier.LIST_OF_GROUP_MEMBERS) {
       const result = decodeReadAccessSpecification(buffer, offset, maxOffset);
-      if (!result) return;
+      if (!result) return undefined;
       return {
         type: baEnum.ApplicationTags.READ_ACCESS_SPECIFICATION,
         value: result.value,
@@ -1438,7 +1486,7 @@ const bacappDecodeContextApplicationData = (buffer: Buffer, offset: number, maxO
       };
     } else if (propertyId === baEnum.PropertyIdentifier.ACTIVE_COV_SUBSCRIPTIONS) {
       const result = decodeCovSubscription(buffer, offset, maxOffset);
-      if (!result) return;
+      if (!result) return undefined;
       return {
         type: baEnum.ApplicationTags.COV_SUBSCRIPTION,
         value: result.value,
@@ -1446,7 +1494,7 @@ const bacappDecodeContextApplicationData = (buffer: Buffer, offset: number, maxO
       };
     } else if (objectType === baEnum.ObjectType.GROUP && propertyId === baEnum.PropertyIdentifier.PRESENT_VALUE) {
       const result = decodeReadAccessResult(buffer, offset, maxOffset);
-      if (!result) return;
+      if (!result) return undefined;
       return {
         type: baEnum.ApplicationTags.READ_ACCESS_RESULT,
         value: result.value,
@@ -1454,7 +1502,7 @@ const bacappDecodeContextApplicationData = (buffer: Buffer, offset: number, maxO
       };
     } else if (propertyId === baEnum.PropertyIdentifier.LIST_OF_OBJECT_PROPERTY_REFERENCES || propertyId === baEnum.PropertyIdentifier.LOG_DEVICE_OBJECT_PROPERTY || propertyId === baEnum.PropertyIdentifier.OBJECT_PROPERTY_REFERENCE) {
       const result = decodeDeviceObjPropertyRef(buffer, offset);
-      if (!result) return;
+      if (!result) return undefined;
       return {
         type: baEnum.ApplicationTags.OBJECT_PROPERTY_REFERENCE,
         value: result.value,
@@ -1462,7 +1510,7 @@ const bacappDecodeContextApplicationData = (buffer: Buffer, offset: number, maxO
       };
     } else if (propertyId === baEnum.PropertyIdentifier.DATE_LIST) {
       const result = decodeCalendar(buffer, offset, maxOffset);
-      if (!result) return;
+      if (!result) return undefined;
       return {
         type: baEnum.ApplicationTags.CONTEXT_SPECIFIC_DECODED,
         value: result.value,
@@ -1494,7 +1542,7 @@ const bacappDecodeContextApplicationData = (buffer: Buffer, offset: number, maxO
           len: subEvtResult.len + 2
         };
       } else {
-        return;
+        return undefined;
       }
     }
     const list = [];
@@ -1502,11 +1550,11 @@ const bacappDecodeContextApplicationData = (buffer: Buffer, offset: number, maxO
     const multipleValues = isOpeningTag(buffer[offset + len]);
     while (((len + offset) <= maxOffset) && !isClosingTag(buffer[offset + len])) {
       const subResult = decodeTagNumberAndValue(buffer, offset + len);
-      if (!subResult) return;
+      if (!subResult) return undefined;
       if (subResult.value === 0) {
         len += subResult.len;
         const result = bacappDecodeApplicationData(buffer, offset + len, maxOffset, baEnum.ASN1_MAX_OBJECT_TYPE, baEnum.ASN1_MAX_PROPERTY_ID);
-        if (!result) return;
+        if (!result) return undefined;
         list.push(result);
         len += result.len;
       } else {
@@ -1515,7 +1563,7 @@ const bacappDecodeContextApplicationData = (buffer: Buffer, offset: number, maxO
           subResult.tagNumber = overrideTagNumber;
         }
         const bacappResult = bacappDecodeData(buffer, offset + len + subResult.len, maxOffset, subResult.tagNumber, subResult.value);
-        if (!bacappResult) return;
+        if (!bacappResult) return undefined;
         if (bacappResult.len === subResult.value) {
           const resObj: {value: any, type: number, encoding?: number} = {
             value: bacappResult.value,
@@ -1541,7 +1589,7 @@ const bacappDecodeContextApplicationData = (buffer: Buffer, offset: number, maxO
         };
       }
     }
-    if ((len + offset) > maxOffset) return;
+    if ((len + offset) > maxOffset) return undefined;
     if (decodeIsClosingTagNumber(buffer, offset + len, tagResult.tagNumber)) {
       len++;
     }
@@ -1551,11 +1599,11 @@ const bacappDecodeContextApplicationData = (buffer: Buffer, offset: number, maxO
       type: baEnum.ApplicationTags.CONTEXT_SPECIFIC_DECODED
     };
   } else {
-    return;
+    return undefined;
   }
 };
 
-export const bacappEncodeTimestamp = (buffer: EncodeBuffer, value: {type: number, value: any}) => {
+export const bacappEncodeTimestamp = (buffer: EncodeBuffer, value: {type: number, value: any}): void => {
   switch (value.type) {
     case baEnum.TimeStamp.TIME:
       encodeContextTime(buffer, 0, value.value);
@@ -1571,19 +1619,19 @@ export const bacappEncodeTimestamp = (buffer: EncodeBuffer, value: {type: number
   }
 };
 
-export const bacappEncodeContextTimestamp = (buffer: EncodeBuffer, tagNumber: number, value: {type: number, value: any}) => {
+export const bacappEncodeContextTimestamp = (buffer: EncodeBuffer, tagNumber: number, value: {type: number, value: any}): void => {
   encodeOpeningTag(buffer, tagNumber);
   bacappEncodeTimestamp(buffer, value);
   encodeClosingTag(buffer, tagNumber);
 };
 
-export const decodeContextCharacterString = (buffer: Buffer, offset: number, maxLength: number, tagNumber: number) => {
+export const decodeContextCharacterString = (buffer: Buffer, offset: number, maxLength: number, tagNumber: number): ContextCharacterStringResult | undefined => {
   let len = 0;
-  if (!decodeIsContextTag(buffer, offset + len, tagNumber)) return;
+  if (!decodeIsContextTag(buffer, offset + len, tagNumber)) return undefined;
   const result = decodeTagNumberAndValue(buffer, offset + len);
   len += result.len;
   const decodedValue = multiCharsetCharacterstringDecode(buffer, offset + 1 + len, maxLength, buffer[offset + len], result.value - 1);
-  if (!decodedValue) return;
+  if (!decodedValue) return undefined;
   len += result.value;
   return {
     len: len,
@@ -1592,7 +1640,7 @@ export const decodeContextCharacterString = (buffer: Buffer, offset: number, max
   };
 };
 
-const decodeIsContextTagWithLength = (buffer: Buffer, offset: number, tagNumber: number) => {
+const decodeIsContextTagWithLength = (buffer: Buffer, offset: number, tagNumber: number): ContextTagWithLengthResult => {
   const result = decodeTagNumber(buffer, offset);
   return {
     len: result.len,
@@ -1600,22 +1648,22 @@ const decodeIsContextTagWithLength = (buffer: Buffer, offset: number, tagNumber:
   };
 };
 
-export const decodeContextObjectId = (buffer: Buffer, offset: number, tagNumber: number) => {
+export const decodeContextObjectId = (buffer: Buffer, offset: number, tagNumber: number): ObjectIdResult | undefined => {
   const result = decodeIsContextTagWithLength(buffer, offset, tagNumber);
-  if (!result.value) return;
+  if (!result.value) return undefined;
   const decodedValue = decodeObjectId(buffer, offset + result.len);
   decodedValue.len = decodedValue.len + result.len;
   return decodedValue;
 };
 
-const encodeBacnetCharacterString = (buffer: EncodeBuffer, value: string, encoding?: number) => {
+const encodeBacnetCharacterString = (buffer: EncodeBuffer, value: string, encoding?: number): void => {
   encoding = encoding || baEnum.CharacterStringEncoding.UTF_8;
   buffer.buffer[buffer.offset++] = encoding;
   const bufEncoded = iconv.encode(value, getEncodingType(encoding));
   buffer.offset += bufEncoded.copy(buffer.buffer, buffer.offset);
 };
 
-export const encodeApplicationCharacterString = (buffer: EncodeBuffer, value: string, encoding?: number) => {
+export const encodeApplicationCharacterString = (buffer: EncodeBuffer, value: string, encoding?: number): void => {
   const tmp = getBuffer();
   encodeBacnetCharacterString(tmp, value, encoding);
   encodeTag(buffer, baEnum.ApplicationTags.CHARACTER_STRING, false, tmp.offset);
@@ -1623,7 +1671,7 @@ export const encodeApplicationCharacterString = (buffer: EncodeBuffer, value: st
   buffer.offset += tmp.offset;
 };
 
-export const encodeContextCharacterString = (buffer: EncodeBuffer, tagNumber: number, value: string, encoding?: number) => {
+export const encodeContextCharacterString = (buffer: EncodeBuffer, tagNumber: number, value: string, encoding?: number): void => {
   const tmp = getBuffer();
   encodeBacnetCharacterString(tmp, value, encoding);
   encodeTag(buffer, tagNumber, true, tmp.offset);

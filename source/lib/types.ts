@@ -91,3 +91,107 @@ export interface BACNetEventInformation {
   eventEnable: BACNetBitString;
   eventPriorities: number[];
 }
+
+export interface DecodeResult<T> {
+  len: number;
+  value: T;
+}
+
+export interface TagResult {
+  len: number;
+  tagNumber: number;
+  value?: number;
+}
+
+export interface ObjectIdResult {
+  len: number;
+  objectType: number;
+  instance: number;
+}
+
+export interface ApplicationDataResult {
+  len: number;
+  type: number;
+  value: any;
+  encoding?: number;
+}
+
+export interface BACNetReadAccessResult {
+  objectId: BACNetObjectID;
+  values: {
+    property: BACNetPropertyID;
+    value: any[];
+  }[];
+}
+
+export interface ReadAccessResultDecode {
+  len: number;
+  value: {
+    objectId: BACNetObjectID;
+    values: any[];
+  };
+}
+
+export interface CharacterStringResult extends DecodeResult<string> {
+  encoding: number;
+}
+
+export interface CalendarDateResult {
+  len: number;
+  year: number;
+  month: number;
+  day: number;
+  wday: number;
+}
+
+export interface CalendarDateRangeResult {
+  len: number;
+  startDate: DecodeResult<Date>;
+  endDate: DecodeResult<Date>;
+}
+
+export interface CalendarWeekDayResult {
+  len: number;
+  month: number;
+  week: number;
+  wday: number;
+}
+
+export interface CalendarResult {
+  len: number;
+  value: any[];
+}
+
+export interface AppDataResult {
+  len: number;
+  type: number;
+  value: any;
+  encoding?: number;
+}
+
+export interface DeviceObjPropertyRefResult {
+  len: number;
+  value: {
+    objectId: ObjectIdResult;
+    id: DecodeResult<number>;
+  };
+}
+
+export interface ReadAccessSpecResult {
+  len: number;
+  value: BACNetReadAccessSpecification;
+}
+
+export interface CovSubscriptionResult {
+  len: number;
+  value: BACNetCovSubscription;
+}
+
+export interface ContextTagWithLengthResult {
+  len: number;
+  value: boolean;
+}
+
+export interface ContextCharacterStringResult extends DecodeResult<string> {
+  encoding: number;
+}
