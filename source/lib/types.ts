@@ -92,31 +92,31 @@ export interface BACNetEventInformation {
   eventPriorities: number[];
 }
 
-export interface DecodeResult<T> {
+export interface Decode<T> {
   len: number;
   value: T;
 }
 
-export interface TagResult {
+export interface Tag {
   len: number;
   tagNumber: number;
   value?: number;
 }
 
-export interface ObjectIdResult {
+export interface ObjectId {
   len: number;
   objectType: number;
   instance: number;
 }
 
-export interface ApplicationDataResult {
+export interface ApplicationData {
   len: number;
   type: number;
   value: any;
   encoding?: number;
 }
 
-export interface BACNetReadAccessResult {
+export interface BACNetReadAccess {
   objectId: BACNetObjectID;
   values: {
     property: BACNetPropertyID;
@@ -124,7 +124,7 @@ export interface BACNetReadAccessResult {
   }[];
 }
 
-export interface ReadAccessResultDecode {
+export interface ReadAccessDecode {
   len: number;
   value: {
     objectId: BACNetObjectID;
@@ -132,11 +132,11 @@ export interface ReadAccessResultDecode {
   };
 }
 
-export interface CharacterStringResult extends DecodeResult<string> {
+export interface CharacterString extends Decode<string> {
   encoding: number;
 }
 
-export interface CalendarDateResult {
+export interface CalendarDate {
   len: number;
   year: number;
   month: number;
@@ -144,55 +144,55 @@ export interface CalendarDateResult {
   wday: number;
 }
 
-export interface CalendarDateRangeResult {
+export interface CalendarDateRange {
   len: number;
-  startDate: DecodeResult<Date>;
-  endDate: DecodeResult<Date>;
+  startDate: Decode<Date>;
+  endDate: Decode<Date>;
 }
 
-export interface CalendarWeekDayResult {
+export interface CalendarWeekDay {
   len: number;
   month: number;
   week: number;
   wday: number;
 }
 
-export interface CalendarResult {
+export interface Calendar {
   len: number;
   value: any[];
 }
 
-export interface AppDataResult {
+export interface AppData {
   len: number;
   type: number;
   value: any;
   encoding?: number;
 }
 
-export interface DeviceObjPropertyRefResult {
+export interface DeviceObjPropertyRef {
   len: number;
   value: {
-    objectId: ObjectIdResult;
-    id: DecodeResult<number>;
+    objectId: ObjectId;
+    id: Decode<number>;
   };
 }
 
-export interface ReadAccessSpecResult {
+export interface ReadAccessSpec {
   len: number;
   value: BACNetReadAccessSpecification;
 }
 
-export interface CovSubscriptionResult {
+export interface CovSubscription {
   len: number;
   value: BACNetCovSubscription;
 }
 
-export interface ContextTagWithLengthResult {
+export interface ContextTagWithLength {
   len: number;
   value: boolean;
 }
 
-export interface ContextCharacterStringResult extends DecodeResult<string> {
+export interface ContextCharacterString extends Decode<string> {
   encoding: number;
 }
 
