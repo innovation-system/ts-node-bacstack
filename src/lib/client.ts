@@ -84,6 +84,7 @@ export class Client extends EventEmitter {
     // Setup code
     this._transport.on('message', this._receiveData.bind(this));
     this._transport.on('error', this._receiveError.bind(this));
+    this._transport.on('listening', () => this.emit('listening'));
     this._transport.open();
   }
 
