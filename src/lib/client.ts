@@ -26,7 +26,9 @@ import {
   WritePropertyOptions,
   ErrorCallback,
   DataCallback,
-  DecodeAcknowledgeSingleResult
+  DecodeAcknowledgeSingleResult,
+  DecodeAcknowledgeMultipleResult,
+  BACNetReadAccessSpecification
 } from './types';
 
 const DEFAULT_HOP_COUNT = 0xFF;
@@ -684,7 +686,7 @@ export class Client extends EventEmitter {
    *   console.log('value: ', value);
    * });
    */
-  readPropertyMultiple(address: string, propertiesArray: any[], options: ServiceOptions | DataCallback<any>, next?: DataCallback<any>) {
+  readPropertyMultiple(address: string, propertiesArray: BACNetReadAccessSpecification[], options: ServiceOptions | DataCallback<DecodeAcknowledgeMultipleResult>, next?: DataCallback<DecodeAcknowledgeMultipleResult>) {
     next = next || (options as DataCallback<any>);
     const settings = {
       maxSegments: (options as ServiceOptions).maxSegments || baEnum.MaxSegmentsAccepted.SEGMENTS_65,
