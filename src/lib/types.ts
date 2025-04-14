@@ -330,3 +330,20 @@ export interface DecodeAcknowledgeMultipleResult {
   len: number;
   values: ReadAccessDecode['value'][];
 }
+
+export interface ReadPropertyRequest {
+  len: number;
+  objectId: BACNetObjectID;
+  property: BACNetPropertyID;
+}
+
+export interface WritePropertyRequest {
+  len: number;
+  objectId: BACNetObjectID;
+  value: {
+    property: BACNetPropertyID;
+    value: ApplicationData[];
+    priority: number;
+  };
+}
+
