@@ -101,8 +101,8 @@ export const decodeAcknowledge = (buffer: Buffer, offset: number) => {
   let len = 0;
   let result: any;
   let decodedValue: any;
-  let isStream = false; // TypeScript inferisce automaticamente boolean
-  let position = 0; // TypeScript inferisce automaticamente number
+  let isStream = false;
+  let position = 0;
   let targetBuffer: Buffer;
 
   result = baAsn1.decodeTagNumberAndValue(buffer, offset + len);
