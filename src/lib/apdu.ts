@@ -8,7 +8,7 @@ import {
   SimpleAck,
   ComplexAck,
   SegmentAck,
-  Error,
+  BACnetError,
   Abort
 } from './types';
 
@@ -181,7 +181,7 @@ export const encodeError = (buffer: EncodeBuffer, type: number, service: number,
   buffer.buffer[buffer.offset++] = service;
 };
 
-export const decodeError = (buffer: Buffer, offset: number): Error => {
+export const decodeError = (buffer: Buffer, offset: number): BACnetError => {
   const orgOffset = offset;
   const type = buffer[offset++];
   const invokeId = buffer[offset++];

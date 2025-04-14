@@ -3,7 +3,7 @@
 import * as baAsn1 from '../asn1';
 import {EncodeBuffer, BACNetObjectID} from '../types';
 
-export const encode = (buffer: EncodeBuffer, subscriberProcessId: number, monitoredObjectId: BACNetObjectID, cancellationRequest: boolean, issueConfirmedNotifications: boolean, lifetime: number) => {
+export const encode = (buffer: EncodeBuffer, subscriberProcessId: number, monitoredObjectId: BACNetObjectID, cancellationRequest: boolean, issueConfirmedNotifications = false, lifetime = 0) => {
   baAsn1.encodeContextUnsigned(buffer, 0, subscriberProcessId);
   baAsn1.encodeContextObjectId(buffer, 1, monitoredObjectId.type, monitoredObjectId.instance);
   if (!cancellationRequest) {

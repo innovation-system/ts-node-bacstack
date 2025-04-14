@@ -4,7 +4,7 @@ import * as baAsn1 from '../asn1';
 import * as baEnum from '../enum';
 import {BACNetObjectID, EncodeBuffer} from '../types';
 
-export const encode = (buffer: EncodeBuffer, lowLimit: number, highLimit: number, objectId: BACNetObjectID, objectName: string) => {
+export const encode = (buffer: EncodeBuffer, lowLimit: number, highLimit: number, objectId: BACNetObjectID, objectName?: string) => {
   if ((lowLimit >= 0) && (lowLimit <= baEnum.ASN1_MAX_INSTANCE) && (highLimit >= 0) && (highLimit <= baEnum.ASN1_MAX_INSTANCE)) {
     baAsn1.encodeContextUnsigned(buffer, 0, lowLimit);
     baAsn1.encodeContextUnsigned(buffer, 1, highLimit);

@@ -505,10 +505,10 @@ export class Client extends EventEmitter {
       address: options.address || this._transport.getBroadcastAddress()
     };
     const buffer = this._getBuffer();
-    baNpdu.encode(buffer, baEnum.NpduControlPriority.NORMAL_MESSAGE, this._settings.address, null, DEFAULT_HOP_COUNT, baEnum.NetworkLayerMessageType.WHO_IS_ROUTER_TO_NETWORK, 0);
+    baNpdu.encode(buffer, baEnum.NpduControlPriority.NORMAL_MESSAGE, this._settings.interface, null, DEFAULT_HOP_COUNT, baEnum.NetworkLayerMessageType.WHO_IS_ROUTER_TO_NETWORK, 0);
     baApdu.encodeUnconfirmedServiceRequest(buffer, baEnum.PduTypes.UNCONFIRMED_REQUEST, baEnum.UnconfirmedServiceChoice.WHO_IS);
     baServices.whoIs.encode(buffer, settings.lowLimit, settings.highLimit);
-    const npduType = (this._settings.address !== this._transport.getBroadcastAddress()) ? baEnum.BvlcResultPurpose.ORIGINAL_UNICAST_NPDU : baEnum.BvlcResultPurpose.ORIGINAL_BROADCAST_NPDU;
+    const npduType = (this._settings.interface !== this._transport.getBroadcastAddress()) ? baEnum.BvlcResultPurpose.ORIGINAL_UNICAST_NPDU : baEnum.BvlcResultPurpose.ORIGINAL_BROADCAST_NPDU;
     baBvlc.encode(buffer.buffer, npduType, buffer.offset);
     this._transport.send(buffer.buffer, buffer.offset, settings.address);
   }
