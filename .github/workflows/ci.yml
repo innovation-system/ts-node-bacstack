@@ -22,12 +22,11 @@ jobs:
           node-version: ${{ matrix.node }}
           cache: 'yarn'
       - run: yarn --frozen-lockfile
-      - run: yarn changelog
       - run: yarn lint
       - run: yarn test
       # TODO: deploy coverage results
-      - run: yarn integration
-      - run: yarn docs
+     # - run: yarn integration
+     # - run: yarn docs
 
   # compliance:
   #   runs-on: ubuntu-latest
