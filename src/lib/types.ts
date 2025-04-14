@@ -291,6 +291,11 @@ export interface WhoIsResult {
   highLimit?: number;
 }
 
+export interface TargetResult {
+  target: BACNetAddress;
+  len: number;
+}
+
 export type ErrorCallback = (err?: Error) => void;
 
 export type DataCallback<T> = (err?: Error, result?: T) => void;

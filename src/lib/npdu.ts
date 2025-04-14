@@ -1,7 +1,7 @@
 'use strict';
 
 import * as baEnum from './enum';
-import {EncodeBuffer, BACNetAddress} from './types';
+import {EncodeBuffer, BACNetAddress, TargetResult} from './types';
 
 const BACNET_PROTOCOL_VERSION = 1;
 const BacnetAddressTypes = {
@@ -9,9 +9,12 @@ const BacnetAddressTypes = {
   IP: 1
 };
 
-const decodeTarget = (buffer: Buffer, offset: number) => {
+const decodeTarget = (buffer: Buffer, offset: number): TargetResult => {
   let len = 0;
-  const target: BACNetAddress = {type: BacnetAddressTypes.NONE, net: (buffer[offset + len++] << 8) | (buffer[offset + len++] << 0)};
+  const target: BACNetAddress = {
+    type: BacnetAddressTypes.NONE,
+    net: (buffer[offset + len++] << 8) | (buffer[offset + len++] << 0)
+  };
   const adrLen = buffer[offset + len++];
   if (adrLen > 0) {
     target.adr = [];
@@ -25,7 +28,7 @@ const decodeTarget = (buffer: Buffer, offset: number) => {
   };
 };
 
-const encodeTarget = (buffer: EncodeBuffer, target: BACNetAddress) => {
+const encodeTarget = (buffer: EncodeBuffer, target: BACNetAddress): void => {
   buffer.buffer[buffer.offset++] = (target.net & 0xFF00) >> 8;
   buffer.buffer[buffer.offset++] = (target.net & 0x00FF) >> 0;
   if (target.net === 0xFFFF || !target.adr) {
@@ -40,22 +43,30 @@ const encodeTarget = (buffer: EncodeBuffer, target: BACNetAddress) => {
   }
 };
 
-export const decodeFunction = (buffer: Buffer, offset: number) => {
-  if (buffer[offset + 0] !== BACNET_PROTOCOL_VERSION) return;
+export const decodeFunction = (buffer: Buffer, offset: number): number | undefined => {
+  if (buffer[offset + 0] !== BACNET_PROTOCOL_VERSION) return undefined;
   return buffer[offset + 1];
 };
 
-export const decode = (buffer: Buffer, offset: number) => {
+export const decode = (buffer: Buffer, offset: number): {
+  len: number;
+  funct: number;
+  destination?: BACNetAddress;
+  source?: BACNetAddress;
+  hopCount: number;
+  networkMsgType: number;
+  vendorId: number;
+} | undefined => {
   const orgOffset = offset;
   offset++;
   const funct = buffer[offset++];
-  let destination: BACNetAddress;
+  let destination: BACNetAddress | undefined;
   if (funct & baEnum.NpduControlBits.DESTINATION_SPECIFIED) {
     const tmpDestination = decodeTarget(buffer, offset);
     offset += tmpDestination.len;
     destination = tmpDestination.target;
   }
-  let source: BACNetAddress;
+  let source: BACNetAddress | undefined;
   if (funct & baEnum.NpduControlBits.SOURCE_SPECIFIED) {
     const tmpSource = decodeTarget(buffer, offset);
     offset += tmpSource.len;
@@ -75,7 +86,7 @@ export const decode = (buffer: Buffer, offset: number) => {
       offset += 2;
     }
   }
-  if (buffer[orgOffset + 0] !== BACNET_PROTOCOL_VERSION) return;
+  if (buffer[orgOffset + 0] !== BACNET_PROTOCOL_VERSION) return undefined;
   return {
     len: offset - orgOffset,
     funct: funct,
@@ -87,15 +98,24 @@ export const decode = (buffer: Buffer, offset: number) => {
   };
 };
 
-export const encode = (buffer: EncodeBuffer, funct: number, destination?: any, source?: BACNetAddress, hopCount?: number, networkMsgType?: number, vendorId?: number) => {
-  const hasDestination = destination && destination.net > 0;
+export const encode = (
+    buffer: EncodeBuffer,
+    funct: number,
+    destination?: BACNetAddress | string,
+    source?: BACNetAddress,
+    hopCount?: number,
+    networkMsgType?: number,
+    vendorId?: number
+): void => {
+  const isDestinationAddress = destination && typeof destination !== 'string';
+  const hasDestination = isDestinationAddress && (destination as BACNetAddress).net > 0;
   const hasSource = source && source.net > 0 && source.net !== 0xFFFF;
 
   buffer.buffer[buffer.offset++] = BACNET_PROTOCOL_VERSION;
   buffer.buffer[buffer.offset++] = funct | (hasDestination ? baEnum.NpduControlBits.DESTINATION_SPECIFIED : 0) | (hasSource ? baEnum.NpduControlBits.SOURCE_SPECIFIED : 0);
 
   if (hasDestination) {
-    encodeTarget(buffer, destination);
+    encodeTarget(buffer, destination as BACNetAddress);
   }
 
   if (hasSource) {
@@ -103,14 +123,14 @@ export const encode = (buffer: EncodeBuffer, funct: number, destination?: any, s
   }
 
   if (hasDestination) {
-    buffer.buffer[buffer.offset++] = hopCount;
+    buffer.buffer[buffer.offset++] = hopCount || 0;
   }
 
   if ((funct & baEnum.NpduControlBits.NETWORK_LAYER_MESSAGE) > 0) {
-    buffer.buffer[buffer.offset++] = networkMsgType;
-    if (networkMsgType >= 0x80) {
-      buffer.buffer[buffer.offset++] = (vendorId & 0xFF00) >> 8;
-      buffer.buffer[buffer.offset++] = (vendorId & 0x00FF) >> 0;
+    buffer.buffer[buffer.offset++] = networkMsgType || 0;
+    if ((networkMsgType || 0) >= 0x80) {
+      buffer.buffer[buffer.offset++] = ((vendorId || 0) & 0xFF00) >> 8;
+      buffer.buffer[buffer.offset++] = ((vendorId || 0) & 0x00FF) >> 0;
     }
   }
 };

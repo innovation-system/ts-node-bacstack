@@ -17,25 +17,25 @@ export class Transport extends EventEmitter {
     this._server.on('error', (err) => this.emit('message', err));
   }
 
-  getBroadcastAddress() {
+  getBroadcastAddress(): string | undefined {
     return this._settings.broadcastAddress;
   }
 
-  getMaxPayload() {
+  getMaxPayload(): number {
     return 1482;
   }
 
-  send(buffer: Buffer, offset: number, receiver: string) {
-    this._server.send(buffer, 0, offset, this._settings.port, receiver);
+  send(buffer: Buffer, offset: number, receiver: string): void {
+    this._server.send(buffer, 0, offset, this._settings.port || 47808, receiver);
   }
 
-  open() {
-    this._server.bind(this._settings.port, this._settings.interface, () => {
+  open(): void {
+    this._server.bind(this._settings.port || 47808, this._settings.interface, () => {
       this._server.setBroadcast(true);
     });
   }
 
-  close() {
+  close(): void {
     this._server.close();
   }
 }
