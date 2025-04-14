@@ -195,3 +195,49 @@ export interface ContextTagWithLengthResult {
 export interface ContextCharacterStringResult extends DecodeResult<string> {
   encoding: number;
 }
+
+export interface BasePacket {
+  len: number;
+  type: number;
+}
+
+export interface ConfirmedServiceRequest extends BasePacket {
+  service: number;
+  maxSegments: number;
+  maxApdu: number;
+  invokeId: number;
+  sequencenumber: number;
+  proposedWindowNumber: number;
+}
+
+export interface UnconfirmedServiceRequest extends BasePacket {
+  service: number;
+}
+
+export interface SimpleAck extends BasePacket {
+  service: number;
+  invokeId: number;
+}
+
+export interface ComplexAck extends BasePacket {
+  service: number;
+  invokeId: number;
+  sequencenumber: number;
+  proposedWindowNumber: number;
+}
+
+export interface SegmentAck extends BasePacket {
+  originalInvokeId: number;
+  sequencenumber: number;
+  actualWindowSize: number;
+}
+
+export interface Error extends BasePacket {
+  service: number;
+  invokeId: number;
+}
+
+export interface Abort extends BasePacket {
+  invokeId: number;
+  reason: number;
+}
