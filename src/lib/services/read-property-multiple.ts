@@ -1,9 +1,9 @@
 'use strict';
 
 import * as baAsn1 from '../asn1';
-import {DecodeAcknowledgeMultipleResult, EncodeBuffer, ReadAccessDecode} from '../types';
+import {BACNetReadAccessSpecification, DecodeAcknowledgeMultipleResult, EncodeBuffer, ReadAccessDecode} from '../types';
 
-export const encode = (buffer: EncodeBuffer, properties: any[]) => {
+export const encode = (buffer: EncodeBuffer, properties: BACNetReadAccessSpecification[]) => {
   properties.forEach((value) => baAsn1.encodeReadAccessSpecification(buffer, value));
 };
 
