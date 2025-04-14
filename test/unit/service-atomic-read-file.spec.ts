@@ -3,7 +3,7 @@
 import {describe, expect, it} from '@jest/globals';
 
 import * as utils from './utils';
-import * as baServices from '../../lib/services';
+import * as baServices from '../../src/lib/services';
 
 describe('bacstack - Services layer AtomicReadFile unit', () => {
   it('should successfully encode and decode as stream', () => {

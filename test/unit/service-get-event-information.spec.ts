@@ -3,8 +3,8 @@
 import {describe, expect, it} from '@jest/globals';
 
 import * as utils from './utils';
-import * as baServices from '../../lib/services';
-import * as baEnum from '../../lib/enum';
+import * as baServices from '../../src/lib/services';
+import * as baEnum from '../../src/lib/enum';
 
 describe('bacstack - Services layer GetEventInformation unit', () => {
   it('should successfully encode and decode', () => {

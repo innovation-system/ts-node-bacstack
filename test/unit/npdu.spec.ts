@@ -3,7 +3,7 @@
 import {describe, expect, it} from '@jest/globals';
 
 import * as utils from './utils';
-import * as baNpdu from '../../lib/npdu';
+import * as baNpdu from '../../src/lib/npdu';
 
 describe('bacstack - NPDU layer', () => {
   it('should successfully decode the NPDU function', () => {

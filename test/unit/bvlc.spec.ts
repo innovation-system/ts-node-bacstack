@@ -3,7 +3,7 @@
 import {describe, expect, it} from '@jest/globals';
 
 import * as utils from './utils';
-import * as baBvlc from '../../lib/bvlc';
+import * as baBvlc from '../../src/lib/bvlc';
 
 describe('bacstack - BVLC layer', () => {
   it('should successfuly encode and decode a package', () => {

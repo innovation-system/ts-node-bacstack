@@ -3,7 +3,7 @@
 import {describe, expect, it} from '@jest/globals';
 
 import * as utils from './utils';
-import * as baApdu from '../../lib/apdu';
+import * as baApdu from '../../src/lib/apdu';
 
 describe('bacstack - APDU layer', () => {
   describe('decodedType', () => {

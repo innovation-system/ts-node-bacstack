@@ -2,7 +2,7 @@
 
 import {describe, expect, it} from '@jest/globals';
 
-import * as baAsn1 from '../../lib/asn1';
+import * as baAsn1 from '../../src/lib/asn1';
 
 describe('bacstack - ASN1 layer', () => {
   describe('decodeUnsigned', () => {

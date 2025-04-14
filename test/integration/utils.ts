@@ -1,7 +1,7 @@
 'use strict';
 
 import {EventEmitter} from 'events';
-import {Client} from '../../lib/client';
+import {Client} from '../../src/lib/client';
 
 export const BacnetClient = Client;
 

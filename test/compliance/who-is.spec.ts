@@ -2,8 +2,8 @@
 
 import {describe, expect, it} from '@jest/globals';
 
-import {Client} from '../../lib/client';
-import * as baEnum from '../../lib/enum';
+import {Client} from '../../src/lib/client';
+import * as baEnum from '../../src/lib/enum';
 
 describe('bacstack - whoIs compliance', () => {
   let client: Client;
