@@ -28,7 +28,9 @@ import {
   DataCallback,
   DecodeAcknowledgeSingleResult,
   DecodeAcknowledgeMultipleResult,
-  BACNetReadAccessSpecification
+  BACNetReadAccessSpecification,
+  DeviceCommunicationOptions,
+  ReinitializeDeviceOptions
 } from './types';
 
 const DEFAULT_HOP_COUNT = 0xFF;
@@ -589,14 +591,24 @@ export class Client extends EventEmitter {
    *   console.log('value: ', value);
    * });
    */
-  readProperty(address: string, objectId: BACNetObjectID, propertyId: number, next: DataCallback<DecodeAcknowledgeSingleResult>) : void
-  readProperty(address: string, objectId: BACNetObjectID, propertyId: number, options: ReadPropertyOptions | DataCallback<DecodeAcknowledgeSingleResult>, next?: DataCallback<DecodeAcknowledgeSingleResult>): void {
-    next = next || (options as DataCallback<any>);
+  readProperty(address: string, objectId: BACNetObjectID, propertyId: number, callback: DataCallback<DecodeAcknowledgeSingleResult>): void;
+  readProperty(address: string, objectId: BACNetObjectID, propertyId: number, options: ReadPropertyOptions, callback: DataCallback<DecodeAcknowledgeSingleResult>): void;
+  readProperty(address: string, objectId: BACNetObjectID, propertyId: number, optionsOrCallback: ReadPropertyOptions | DataCallback<DecodeAcknowledgeSingleResult>, callback?: DataCallback<DecodeAcknowledgeSingleResult>): void {
+    if (typeof optionsOrCallback !== 'function' && !callback) {
+      throw new Error('A callback function must be provided');
+    }
+
+    const next: DataCallback<DecodeAcknowledgeSingleResult> =
+      typeof optionsOrCallback === 'function' ? optionsOrCallback : callback;
+
+    const options: ReadPropertyOptions =
+      typeof optionsOrCallback === 'function' ? {} : optionsOrCallback;
+
     const settings = {
-      maxSegments: (options as ReadPropertyOptions).maxSegments || baEnum.MaxSegmentsAccepted.SEGMENTS_65,
-      maxApdu: (options as ReadPropertyOptions).maxApdu || baEnum.MaxApduLengthAccepted.OCTETS_1476,
-      invokeId: (options as ReadPropertyOptions).invokeId || this._getInvokeId(),
-      arrayIndex: (options as ReadPropertyOptions).arrayIndex || baEnum.ASN1_ARRAY_ALL
+      maxSegments: options.maxSegments || baEnum.MaxSegmentsAccepted.SEGMENTS_65,
+      maxApdu: options.maxApdu || baEnum.MaxApduLengthAccepted.OCTETS_1476,
+      invokeId: options.invokeId || this._getInvokeId(),
+      arrayIndex: options.arrayIndex || baEnum.ASN1_ARRAY_ALL
     };
     const buffer = this._getBuffer();
     baNpdu.encode(buffer, baEnum.NpduControlPriority.NORMAL_MESSAGE | baEnum.NpduControlBits.EXPECTING_REPLY, address, null, DEFAULT_HOP_COUNT, baEnum.NetworkLayerMessageType.WHO_IS_ROUTER_TO_NETWORK, 0);
@@ -641,14 +653,25 @@ export class Client extends EventEmitter {
    *   console.log('error: ', err);
    * });
    */
-  writeProperty(address: string, objectId: BACNetObjectID, propertyId: number, values: BACNetAppData[], options: WritePropertyOptions | ErrorCallback, next?: ErrorCallback) {
-    next = next || (options as ErrorCallback);
+  writeProperty(address: string, objectId: BACNetObjectID, propertyId: number, values: BACNetAppData[], callback: ErrorCallback): void;
+  writeProperty(address: string, objectId: BACNetObjectID, propertyId: number, values: BACNetAppData[], options: WritePropertyOptions, callback: ErrorCallback): void;
+  writeProperty(address: string, objectId: BACNetObjectID, propertyId: number, values: BACNetAppData[], optionsOrCallback: WritePropertyOptions | ErrorCallback, callback?: ErrorCallback): void {
+    if (typeof optionsOrCallback !== 'function' && !callback) {
+      throw new Error('A callback function must be provided');
+    }
+
+    const next: ErrorCallback =
+      typeof optionsOrCallback === 'function' ? optionsOrCallback : callback;
+
+    const options: WritePropertyOptions =
+      typeof optionsOrCallback === 'function' ? {} : optionsOrCallback;
+
     const settings = {
-      maxSegments: (options as WritePropertyOptions).maxSegments || baEnum.MaxSegmentsAccepted.SEGMENTS_65,
-      maxApdu: (options as WritePropertyOptions).maxApdu || baEnum.MaxApduLengthAccepted.OCTETS_1476,
-      invokeId: (options as WritePropertyOptions).invokeId || this._getInvokeId(),
-      arrayIndex: (options as WritePropertyOptions).arrayIndex || baEnum.ASN1_ARRAY_ALL,
-      priority: (options as WritePropertyOptions).priority
+      maxSegments: options.maxSegments || baEnum.MaxSegmentsAccepted.SEGMENTS_65,
+      maxApdu: options.maxApdu || baEnum.MaxApduLengthAccepted.OCTETS_1476,
+      invokeId: options.invokeId || this._getInvokeId(),
+      arrayIndex: options.arrayIndex || baEnum.ASN1_ARRAY_ALL,
+      priority: options.priority
     };
     const buffer = this._getBuffer();
     baNpdu.encode(buffer, baEnum.NpduControlPriority.NORMAL_MESSAGE | baEnum.NpduControlBits.EXPECTING_REPLY, address, null, DEFAULT_HOP_COUNT, baEnum.NetworkLayerMessageType.WHO_IS_ROUTER_TO_NETWORK, 0);
@@ -687,12 +710,23 @@ export class Client extends EventEmitter {
    *   console.log('value: ', value);
    * });
    */
-  readPropertyMultiple(address: string, propertiesArray: BACNetReadAccessSpecification[], options: ServiceOptions | DataCallback<DecodeAcknowledgeMultipleResult>, next?: DataCallback<DecodeAcknowledgeMultipleResult>) {
-    next = next || (options as DataCallback<any>);
+  readPropertyMultiple(address: string, propertiesArray: BACNetReadAccessSpecification[], callback: DataCallback<DecodeAcknowledgeMultipleResult>): void;
+  readPropertyMultiple(address: string, propertiesArray: BACNetReadAccessSpecification[], options: ServiceOptions, callback: DataCallback<DecodeAcknowledgeMultipleResult>): void;
+  readPropertyMultiple(address: string, propertiesArray: BACNetReadAccessSpecification[], optionsOrCallback: ServiceOptions | DataCallback<DecodeAcknowledgeMultipleResult>, callback?: DataCallback<DecodeAcknowledgeMultipleResult>): void {
+    if (typeof optionsOrCallback !== 'function' && !callback) {
+      throw new Error('A callback function must be provided');
+    }
+
+    const next: DataCallback<DecodeAcknowledgeMultipleResult> =
+      typeof optionsOrCallback === 'function' ? optionsOrCallback : callback;
+
+    const options: ServiceOptions =
+      typeof optionsOrCallback === 'function' ? {} : optionsOrCallback;
+
     const settings = {
-      maxSegments: (options as ServiceOptions).maxSegments || baEnum.MaxSegmentsAccepted.SEGMENTS_65,
-      maxApdu: (options as ServiceOptions).maxApdu || baEnum.MaxApduLengthAccepted.OCTETS_1476,
-      invokeId: (options as ServiceOptions).invokeId || this._getInvokeId()
+      maxSegments: options.maxSegments || baEnum.MaxSegmentsAccepted.SEGMENTS_65,
+      maxApdu: options.maxApdu || baEnum.MaxApduLengthAccepted.OCTETS_1476,
+      invokeId: options.invokeId || this._getInvokeId()
     };
     const buffer = this._getBuffer();
     baNpdu.encode(buffer, baEnum.NpduControlPriority.NORMAL_MESSAGE | baEnum.NpduControlBits.EXPECTING_REPLY, address, null, DEFAULT_HOP_COUNT, baEnum.NetworkLayerMessageType.WHO_IS_ROUTER_TO_NETWORK, 0);
@@ -743,12 +777,22 @@ export class Client extends EventEmitter {
    *   console.log('error: ', err);
    * });
    */
-  writePropertyMultiple(address: string, values: any[], options: ServiceOptions | ErrorCallback, next?: ErrorCallback) {
-    next = next || (options as ErrorCallback);
+  writePropertyMultiple(address: string, values: any[], callback: ErrorCallback): void;
+  writePropertyMultiple(address: string, values: any[], options: ServiceOptions, callback: ErrorCallback): void;
+  writePropertyMultiple(address: string, values: any[], optionsOrCallback: ServiceOptions | ErrorCallback, callback?: ErrorCallback): void {
+    if (typeof optionsOrCallback !== 'function' && !callback) {
+      throw new Error('A callback function must be provided');
+    }
+
+    const next: ErrorCallback =
+      typeof optionsOrCallback === 'function' ? optionsOrCallback : callback;
+
+    const options: ServiceOptions =
+      typeof optionsOrCallback === 'function' ? {} : optionsOrCallback;
     const settings = {
-      maxSegments: (options as ServiceOptions).maxSegments || baEnum.MaxSegmentsAccepted.SEGMENTS_65,
-      maxApdu: (options as ServiceOptions).maxApdu || baEnum.MaxApduLengthAccepted.OCTETS_1476,
-      invokeId: (options as ServiceOptions).invokeId || this._getInvokeId()
+      maxSegments: options.maxSegments || baEnum.MaxSegmentsAccepted.SEGMENTS_65,
+      maxApdu: options.maxApdu || baEnum.MaxApduLengthAccepted.OCTETS_1476,
+      invokeId: options.invokeId || this._getInvokeId()
     };
     const buffer = this._getBuffer();
     baNpdu.encode(buffer, baEnum.NpduControlPriority.NORMAL_MESSAGE | baEnum.NpduControlBits.EXPECTING_REPLY, address);
@@ -779,8 +823,18 @@ export class Client extends EventEmitter {
    *   console.log('error: ', err);
    * });
    */
-  deviceCommunicationControl(address: string, timeDuration: number, enableDisable: number, options: any, next: (err?: Error) => void) {
-    next = next || options;
+  deviceCommunicationControl(address: string, timeDuration: number, enableDisable: number, callback: ErrorCallback): void;
+  deviceCommunicationControl(address: string, timeDuration: number, enableDisable: number, options: DeviceCommunicationOptions, callback: ErrorCallback): void;
+  deviceCommunicationControl(address: string, timeDuration: number, enableDisable: number, optionsOrCallback: DeviceCommunicationOptions | ErrorCallback, callback?: ErrorCallback): void {
+    if (typeof optionsOrCallback !== 'function' && !callback) {
+      throw new Error('A callback function must be provided');
+    }
+
+    const next: ErrorCallback =
+      typeof optionsOrCallback === 'function' ? optionsOrCallback : callback;
+
+    const options: DeviceCommunicationOptions =
+      typeof optionsOrCallback === 'function' ? {} : optionsOrCallback;
     const settings = {
       maxSegments: options.maxSegments || baEnum.MaxSegmentsAccepted.SEGMENTS_65,
       maxApdu: options.maxApdu || baEnum.MaxApduLengthAccepted.OCTETS_1476,
@@ -815,8 +869,18 @@ export class Client extends EventEmitter {
    *   console.log('error: ', err);
    * });
    */
-  reinitializeDevice(address: string, state: number, options: any, next: (err?: Error) => void) {
-    next = next || options;
+  reinitializeDevice(address: string, state: number, callback: ErrorCallback): void;
+  reinitializeDevice(address: string, state: number, options: ReinitializeDeviceOptions, callback: ErrorCallback): void;
+  reinitializeDevice(address: string, state: number, optionsOrCallback: ReinitializeDeviceOptions | ErrorCallback, callback?: ErrorCallback): void {
+    if (typeof optionsOrCallback !== 'function' && !callback) {
+      throw new Error('A callback function must be provided');
+    }
+
+    const next: ErrorCallback =
+      typeof optionsOrCallback === 'function' ? optionsOrCallback : callback;
+
+    const options: ReinitializeDeviceOptions =
+      typeof optionsOrCallback === 'function' ? {} : optionsOrCallback;
     const settings = {
       maxSegments: options.maxSegments || baEnum.MaxSegmentsAccepted.SEGMENTS_65,
       maxApdu: options.maxApdu || baEnum.MaxApduLengthAccepted.OCTETS_1476,
@@ -854,8 +918,20 @@ export class Client extends EventEmitter {
    *   console.log('value: ', value);
    * });
    */
-  writeFile(address: string, objectId: BACNetObjectID, position: number, fileBuffer: number[][], options: any, next: (err?: Error, result?: any) => void) {
-    next = next || options;
+
+  writeFile(address: string, objectId: BACNetObjectID, position: number, fileBuffer: number[][], callback: DataCallback<any>): void;
+  writeFile(address: string, objectId: BACNetObjectID, position: number, fileBuffer: number[][], options: ServiceOptions, callback: DataCallback<any>): void;
+  writeFile(address: string, objectId: BACNetObjectID, position: number, fileBuffer: number[][], optionsOrCallback: ServiceOptions | DataCallback<any>, callback?: DataCallback<any>): void {
+    if (typeof optionsOrCallback !== 'function' && !callback) {
+      throw new Error('A callback function must be provided');
+    }
+
+    const next: DataCallback<any> =
+      typeof optionsOrCallback === 'function' ? optionsOrCallback : callback;
+
+    const options: ServiceOptions =
+      typeof optionsOrCallback === 'function' ? {} : optionsOrCallback;
+
     const settings = {
       maxSegments: options.maxSegments || baEnum.MaxSegmentsAccepted.SEGMENTS_65,
       maxApdu: options.maxApdu || baEnum.MaxApduLengthAccepted.OCTETS_1476,
@@ -897,8 +973,19 @@ export class Client extends EventEmitter {
    *   console.log('value: ', value);
    * });
    */
-  readFile(address: string, objectId: BACNetObjectID, position: number, count: number, options: any, next: (err?: Error, result?: any) => void) {
-    next = next || options;
+  readFile(address: string, objectId: BACNetObjectID, position: number, count: number, callback: DataCallback<any>): void;
+  readFile(address: string, objectId: BACNetObjectID, position: number, count: number, options: ServiceOptions, callback: DataCallback<any>): void;
+  readFile(address: string, objectId: BACNetObjectID, position: number, count: number, optionsOrCallback: ServiceOptions | DataCallback<any>, callback?: DataCallback<any>): void {
+    if (typeof optionsOrCallback !== 'function' && !callback) {
+      throw new Error('A callback function must be provided');
+    }
+
+    const next: DataCallback<any> =
+      typeof optionsOrCallback === 'function' ? optionsOrCallback : callback;
+
+    const options: ServiceOptions =
+      typeof optionsOrCallback === 'function' ? {} : optionsOrCallback;
+
     const settings = {
       maxSegments: options.maxSegments || baEnum.MaxSegmentsAccepted.SEGMENTS_65,
       maxApdu: options.maxApdu || baEnum.MaxApduLengthAccepted.OCTETS_1476,
@@ -940,8 +1027,19 @@ export class Client extends EventEmitter {
    *   console.log('value: ', value);
    * });
    */
-  readRange(address: string, objectId: BACNetObjectID, idxBegin: number, quantity: number, options: any, next: (err?: Error, result?: any) => void) {
-    next = next || options;
+  readRange(address: string, objectId: BACNetObjectID, idxBegin: number, quantity: number, callback: DataCallback<any>): void;
+  readRange(address: string, objectId: BACNetObjectID, idxBegin: number, quantity: number, options: ServiceOptions, callback: DataCallback<any>): void;
+  readRange(address: string, objectId: BACNetObjectID, idxBegin: number, quantity: number, optionsOrCallback: ServiceOptions | DataCallback<any>, callback?: DataCallback<any>): void {
+    if (typeof optionsOrCallback !== 'function' && !callback) {
+      throw new Error('A callback function must be provided');
+    }
+
+    const next: DataCallback<any> =
+      typeof optionsOrCallback === 'function' ? optionsOrCallback : callback;
+
+    const options: ServiceOptions =
+      typeof optionsOrCallback === 'function' ? {} : optionsOrCallback;
+
     const settings = {
       maxSegments: options.maxSegments || baEnum.MaxSegmentsAccepted.SEGMENTS_65,
       maxApdu: options.maxApdu || baEnum.MaxApduLengthAccepted.OCTETS_1476,
@@ -985,8 +1083,19 @@ export class Client extends EventEmitter {
    *   console.log('error: ', err);
    * });
    */
-  subscribeCOV(address: string, objectId: BACNetObjectID, subscribeId: number, cancel: boolean, issueConfirmedNotifications: boolean, lifetime: number, options: any, next: (err?: Error) => void) {
-    next = next || options;
+  subscribeCOV(address: string, objectId: BACNetObjectID, subscribeId: number, cancel: boolean, issueConfirmedNotifications: boolean, lifetime: number, callback: ErrorCallback): void;
+  subscribeCOV(address: string, objectId: BACNetObjectID, subscribeId: number, cancel: boolean, issueConfirmedNotifications: boolean, lifetime: number, options: ServiceOptions, callback: ErrorCallback): void;
+  subscribeCOV(address: string, objectId: BACNetObjectID, subscribeId: number, cancel: boolean, issueConfirmedNotifications: boolean, lifetime: number, optionsOrCallback: ServiceOptions | ErrorCallback, callback?: ErrorCallback): void {
+    if (typeof optionsOrCallback !== 'function' && !callback) {
+      throw new Error('A callback function must be provided');
+    }
+
+    const next: ErrorCallback =
+      typeof optionsOrCallback === 'function' ? optionsOrCallback : callback;
+
+    const options: ServiceOptions =
+      typeof optionsOrCallback === 'function' ? {} : optionsOrCallback;
+
     const settings = {
       maxSegments: options.maxSegments || baEnum.MaxSegmentsAccepted.SEGMENTS_65,
       maxApdu: options.maxApdu || baEnum.MaxApduLengthAccepted.OCTETS_1476,
@@ -1027,8 +1136,19 @@ export class Client extends EventEmitter {
    *   console.log('error: ', err);
    * });
    */
-  subscribeProperty(address: string, objectId: BACNetObjectID, monitoredProperty: BACNetPropertyID, subscribeId: number, cancel: boolean, issueConfirmedNotifications: boolean, options: any, next: (err?: Error) => void) {
-    next = next || options;
+  subscribeProperty(address: string, objectId: BACNetObjectID, monitoredProperty: BACNetPropertyID, subscribeId: number, cancel: boolean, issueConfirmedNotifications: boolean, callback: ErrorCallback): void;
+  subscribeProperty(address: string, objectId: BACNetObjectID, monitoredProperty: BACNetPropertyID, subscribeId: number, cancel: boolean, issueConfirmedNotifications: boolean, options: ServiceOptions, callback: ErrorCallback): void;
+  subscribeProperty(address: string, objectId: BACNetObjectID, monitoredProperty: BACNetPropertyID, subscribeId: number, cancel: boolean, issueConfirmedNotifications: boolean, optionsOrCallback: ServiceOptions | ErrorCallback, callback?: ErrorCallback): void {
+    if (typeof optionsOrCallback !== 'function' && !callback) {
+      throw new Error('A callback function must be provided');
+    }
+
+    const next: ErrorCallback =
+      typeof optionsOrCallback === 'function' ? optionsOrCallback : callback;
+
+    const options: ServiceOptions =
+      typeof optionsOrCallback === 'function' ? {} : optionsOrCallback;
+
     const settings = {
       maxSegments: options.maxSegments || baEnum.MaxSegmentsAccepted.SEGMENTS_65,
       maxApdu: options.maxApdu || baEnum.MaxApduLengthAccepted.OCTETS_1476,
@@ -1043,8 +1163,19 @@ export class Client extends EventEmitter {
     this._addCallback(settings.invokeId, (err) => next(err));
   }
 
-  createObject(address: string, objectId: BACNetObjectID, values: any, options: any, next: (err?: Error) => void) {
-    next = next || options;
+  createObject(address: string, objectId: BACNetObjectID, values: any, callback: ErrorCallback): void;
+  createObject(address: string, objectId: BACNetObjectID, values: any, options: ServiceOptions, callback: ErrorCallback): void;
+  createObject(address: string, objectId: BACNetObjectID, values: any, optionsOrCallback: ServiceOptions | ErrorCallback, callback?: ErrorCallback): void {
+    if (typeof optionsOrCallback !== 'function' && !callback) {
+      throw new Error('A callback function must be provided');
+    }
+
+    const next: ErrorCallback =
+      typeof optionsOrCallback === 'function' ? optionsOrCallback : callback;
+
+    const options: ServiceOptions =
+      typeof optionsOrCallback === 'function' ? {} : optionsOrCallback;
+
     const settings = {
       maxSegments: options.maxSegments || baEnum.MaxSegmentsAccepted.SEGMENTS_65,
       maxApdu: options.maxApdu || baEnum.MaxApduLengthAccepted.OCTETS_1476,
@@ -1079,8 +1210,20 @@ export class Client extends EventEmitter {
    *   console.log('error: ', err);
    * });
    */
-  deleteObject(address: string, objectId: BACNetObjectID, options: any, next: (err?: Error) => void) {
-    next = next || options;
+
+  deleteObject(address: string, objectId: BACNetObjectID, callback: ErrorCallback): void;
+  deleteObject(address: string, objectId: BACNetObjectID, options: ServiceOptions, callback: ErrorCallback): void;
+  deleteObject(address: string, objectId: BACNetObjectID, optionsOrCallback: ServiceOptions | ErrorCallback, callback?: ErrorCallback): void {
+    if (typeof optionsOrCallback !== 'function' && !callback) {
+      throw new Error('A callback function must be provided');
+    }
+
+    const next: ErrorCallback =
+      typeof optionsOrCallback === 'function' ? optionsOrCallback : callback;
+
+    const options: ServiceOptions =
+      typeof optionsOrCallback === 'function' ? {} : optionsOrCallback;
+
     const settings = {
       maxSegments: options.maxSegments || baEnum.MaxSegmentsAccepted.SEGMENTS_65,
       maxApdu: options.maxApdu || baEnum.MaxApduLengthAccepted.OCTETS_1476,
@@ -1095,8 +1238,18 @@ export class Client extends EventEmitter {
     this._addCallback(settings.invokeId, (err) => next(err));
   }
 
-  removeListElement(address: string, objectId: BACNetObjectID, reference: BACNetPropertyID, values: any, options: any, next: (err?: Error) => void) {
-    next = next || options;
+  removeListElement(address: string, objectId: BACNetObjectID, reference: BACNetPropertyID, values: any, callback: ErrorCallback): void;
+  removeListElement(address: string, objectId: BACNetObjectID, reference: BACNetPropertyID, values: any, options: ServiceOptions, callback: ErrorCallback): void;
+  removeListElement(address: string, objectId: BACNetObjectID, reference: BACNetPropertyID, values: any, optionsOrCallback: ServiceOptions | ErrorCallback, callback?: ErrorCallback): void {
+    if (typeof optionsOrCallback !== 'function' && !callback) {
+      throw new Error('A callback function must be provided');
+    }
+
+    const next: ErrorCallback =
+      typeof optionsOrCallback === 'function' ? optionsOrCallback : callback;
+
+    const options: ServiceOptions =
+      typeof optionsOrCallback === 'function' ? {} : optionsOrCallback;
     const settings = {
       maxSegments: options.maxSegments || baEnum.MaxSegmentsAccepted.SEGMENTS_65,
       maxApdu: options.maxApdu || baEnum.MaxApduLengthAccepted.OCTETS_1476,
@@ -1111,8 +1264,19 @@ export class Client extends EventEmitter {
     this._addCallback(settings.invokeId, (err) => next(err));
   }
 
-  addListElement(address: string, objectId: BACNetObjectID, reference: BACNetPropertyID, values: any, options: any, next: (err?: Error) => void) {
-    next = next || options;
+  addListElement(address: string, objectId: BACNetObjectID, reference: BACNetPropertyID, values: any, callback: ErrorCallback): void;
+  addListElement(address: string, objectId: BACNetObjectID, reference: BACNetPropertyID, values: any, options: ServiceOptions, callback: ErrorCallback): void;
+  addListElement(address: string, objectId: BACNetObjectID, reference: BACNetPropertyID, values: any, optionsOrCallback: ServiceOptions | ErrorCallback, callback?: ErrorCallback): void {
+    if (typeof optionsOrCallback !== 'function' && !callback) {
+      throw new Error('A callback function must be provided');
+    }
+
+    const next: ErrorCallback =
+      typeof optionsOrCallback === 'function' ? optionsOrCallback : callback;
+
+    const options: ServiceOptions =
+      typeof optionsOrCallback === 'function' ? {} : optionsOrCallback;
+
     const settings = {
       maxSegments: options.maxSegments || baEnum.MaxSegmentsAccepted.SEGMENTS_65,
       maxApdu: options.maxApdu || baEnum.MaxApduLengthAccepted.OCTETS_1476,
@@ -1144,8 +1308,19 @@ export class Client extends EventEmitter {
    *   console.log('value: ', value);
    * });
    */
-  getAlarmSummary(address: string, options: any, next: (err?: Error, result?: any) => void) {
-    next = next || options;
+  getAlarmSummary(address: string, callback: DataCallback<any>): void;
+  getAlarmSummary(address: string, options: ServiceOptions, callback: DataCallback<any>): void;
+  getAlarmSummary(address: string, optionsOrCallback: ServiceOptions | DataCallback<any>, callback?: DataCallback<any>): void {
+    if (typeof optionsOrCallback !== 'function' && !callback) {
+      throw new Error('A callback function must be provided');
+    }
+
+    const next: DataCallback<any> =
+      typeof optionsOrCallback === 'function' ? optionsOrCallback : callback;
+
+    const options: ServiceOptions =
+      typeof optionsOrCallback === 'function' ? {} : optionsOrCallback;
+
     const settings = {
       maxSegments: options.maxSegments || baEnum.MaxSegmentsAccepted.SEGMENTS_65,
       maxApdu: options.maxApdu || baEnum.MaxApduLengthAccepted.OCTETS_1476,
@@ -1184,8 +1359,19 @@ export class Client extends EventEmitter {
    *   console.log('value: ', value);
    * });
    */
-  getEventInformation(address: string, objectId: BACNetObjectID, options: any, next: (err?: Error, result?: any) => void) {
-    next = next || options;
+  getEventInformation(address: string, objectId: BACNetObjectID, callback: DataCallback<any>): void;
+  getEventInformation(address: string, objectId: BACNetObjectID, options: ServiceOptions, callback: DataCallback<any>): void;
+  getEventInformation(address: string, objectId: BACNetObjectID, optionsOrCallback: ServiceOptions | DataCallback<any>, callback?: DataCallback<any>): void {
+    if (typeof optionsOrCallback !== 'function' && !callback) {
+      throw new Error('A callback function must be provided');
+    }
+
+    const next: DataCallback<any> =
+      typeof optionsOrCallback === 'function' ? optionsOrCallback : callback;
+
+    const options: ServiceOptions =
+      typeof optionsOrCallback === 'function' ? {} : optionsOrCallback;
+
     const settings = {
       maxSegments: options.maxSegments || baEnum.MaxSegmentsAccepted.SEGMENTS_65,
       maxApdu: options.maxApdu || baEnum.MaxApduLengthAccepted.OCTETS_1476,
@@ -1205,8 +1391,19 @@ export class Client extends EventEmitter {
     });
   }
 
-  acknowledgeAlarm(address: string, objectId: BACNetObjectID, eventState: number, ackText: string, evTimeStamp: any, ackTimeStamp: any, options: any, next: (err?: Error) => void) {
-    next = next || options;
+  acknowledgeAlarm(address: string, objectId: BACNetObjectID, eventState: number, ackText: string, evTimeStamp: any, ackTimeStamp: any, callback: ErrorCallback): void;
+  acknowledgeAlarm(address: string, objectId: BACNetObjectID, eventState: number, ackText: string, evTimeStamp: any, ackTimeStamp: any, options: ServiceOptions, callback: ErrorCallback): void;
+  acknowledgeAlarm(address: string, objectId: BACNetObjectID, eventState: number, ackText: string, evTimeStamp: any, ackTimeStamp: any, optionsOrCallback: ServiceOptions | ErrorCallback, callback?: ErrorCallback): void {
+    if (typeof optionsOrCallback !== 'function' && !callback) {
+      throw new Error('A callback function must be provided');
+    }
+
+    const next: ErrorCallback =
+      typeof optionsOrCallback === 'function' ? optionsOrCallback : callback;
+
+    const options: ServiceOptions =
+      typeof optionsOrCallback === 'function' ? {} : optionsOrCallback;
+
     const settings = {
       maxSegments: options.maxSegments || baEnum.MaxSegmentsAccepted.SEGMENTS_65,
       maxApdu: options.maxApdu || baEnum.MaxApduLengthAccepted.OCTETS_1476,
@@ -1241,8 +1438,19 @@ export class Client extends EventEmitter {
    *   console.log('error: ', err);
    * });
    */
-  confirmedPrivateTransfer(address: string, vendorId: number, serviceNumber: number, data: number[], options: any, next: (err?: Error) => void) {
-    next = next || options;
+  confirmedPrivateTransfer(address: string, vendorId: number, serviceNumber: number, data: number[], callback: ErrorCallback): void;
+  confirmedPrivateTransfer(address: string, vendorId: number, serviceNumber: number, data: number[], options: ServiceOptions, callback: ErrorCallback): void;
+  confirmedPrivateTransfer(address: string, vendorId: number, serviceNumber: number, data: number[], optionsOrCallback: ServiceOptions | ErrorCallback, callback?: ErrorCallback): void {
+    if (typeof optionsOrCallback !== 'function' && !callback) {
+      throw new Error('A callback function must be provided');
+    }
+
+    const next: ErrorCallback =
+      typeof optionsOrCallback === 'function' ? optionsOrCallback : callback;
+
+    const options: ServiceOptions =
+      typeof optionsOrCallback === 'function' ? {} : optionsOrCallback;
+
     const settings = {
       maxSegments: options.maxSegments || baEnum.MaxSegmentsAccepted.SEGMENTS_65,
       maxApdu: options.maxApdu || baEnum.MaxApduLengthAccepted.OCTETS_1476,

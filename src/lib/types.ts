@@ -347,3 +347,10 @@ export interface WritePropertyRequest {
   };
 }
 
+export interface DeviceCommunicationOptions extends ServiceOptions {
+  password?: string;
+}
+
+export interface ReinitializeDeviceOptions extends ServiceOptions {
+  password?: string;
+}
