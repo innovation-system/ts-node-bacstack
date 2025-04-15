@@ -2106,7 +2106,7 @@ export const PduSegAckBits = {
 }
 
 // ASHRE 135-2016 - 21 FORMAL DESCRIPTION OF APPLICATION PROTOCOL DATA UNITS - Enumerators
-export const PduTypes = {
+export const PduType = {
 	CONFIRMED_REQUEST: 0 << 4,
 	UNCONFIRMED_REQUEST: 1 << 4,
 	SIMPLE_ACK: 2 << 4,
