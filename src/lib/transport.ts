@@ -75,7 +75,7 @@ export class Transport extends EventEmitter {
     }
     const [address, port] = receiver.split(':');
     debug('Send packet to ' + receiver + ': ' + buffer.toString('hex').substring(0, offset * 2));
-    this._server.send(buffer, 0, offset, parseInt(port) ?? DEFAULT_BACNET_PORT, address);
+    this._server.send(buffer, 0, offset, parseInt(port) || DEFAULT_BACNET_PORT, address);
   }
 
   open(): void {
