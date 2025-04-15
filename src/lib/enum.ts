@@ -2094,7 +2094,7 @@ export const NpduControlPriority = {
 };
 
 // ASHRE 135-2016 - 20.1.2.11 Format of the BACnet-Confirmed-Request-PDU - Enumerators
-export const PduConReqBits = {
+export const PduConReqBit = {
   SEGMENTED_RESPONSE_ACCEPTED: (1 << 1),
   MORE_FOLLOWS: (1 << 2),
   SEGMENTED_MESSAGE: (1 << 3)
@@ -2107,7 +2107,7 @@ export const PduSegAckBits = {
 };
 
 // ASHRE 135-2016 - 21 FORMAL DESCRIPTION OF APPLICATION PROTOCOL DATA UNITS - Enumerators
-export const PduTypes = {
+export const PduType = {
   CONFIRMED_REQUEST: (0 << 4),
   UNCONFIRMED_REQUEST: (1 << 4),
   SIMPLE_ACK: (2 << 4),

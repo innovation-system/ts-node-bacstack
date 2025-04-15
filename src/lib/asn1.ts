@@ -75,7 +75,7 @@ const getEncodingType = (encoding: number, decodingBuffer?: Buffer, decodingOffs
   }
 };
 
-const encodeUnsigned = (buffer: EncodeBuffer, value: number, length: number): void => {
+export const encodeUnsigned = (buffer: EncodeBuffer, value: number, length: number): void => {
   buffer.buffer.writeUIntBE(value, buffer.offset, length);
   buffer.offset += length;
 };
