@@ -32,8 +32,8 @@ import {
 	ReadAccessError,
 } from './types'
 
-export const START_YEAR = 1900;
-export const MAX_YEARS = 256;
+export const START_YEAR = 1900
+export const MAX_YEARS = 256
 
 const getBuffer = (): EncodeBuffer => ({
 	buffer: Buffer.alloc(1472),
@@ -125,13 +125,13 @@ export const decodeUnsigned = (
 		return {
 			len: 0,
 			value: 0,
-		};
+		}
 	}
 	return {
 		len: length,
 		value: buffer.readUIntBE(offset, length),
-	};
-};
+	}
+}
 
 export const decodeEnumerated = (
 	buffer: Buffer,
@@ -316,12 +316,7 @@ export const encodeApplicationObjectId = (
 ): void => {
 	const tmp = getBuffer()
 	encodeBacnetObjectId(tmp, objectType, instance)
-	encodeTag(
-		buffer,
-		baEnum.ApplicationTag.OBJECTIDENTIFIER,
-		false,
-		tmp.offset,
-	)
+	encodeTag(buffer, baEnum.ApplicationTag.OBJECTIDENTIFIER, false, tmp.offset)
 	tmp.buffer.copy(buffer.buffer, buffer.offset, 0, tmp.offset)
 	buffer.offset += tmp.offset
 }
@@ -332,12 +327,7 @@ export const encodeApplicationUnsigned = (
 ): void => {
 	const tmp = getBuffer()
 	encodeBacnetUnsigned(tmp, value)
-	encodeTag(
-		buffer,
-		baEnum.ApplicationTag.UNSIGNED_INTEGER,
-		false,
-		tmp.offset,
-	)
+	encodeTag(buffer, baEnum.ApplicationTag.UNSIGNED_INTEGER, false, tmp.offset)
 	tmp.buffer.copy(buffer.buffer, buffer.offset, 0, tmp.offset)
 	buffer.offset += tmp.offset
 }
@@ -399,7 +389,7 @@ const bitstringOctet = (
 ): number => {
 	let octet = 0
 	if (bitString.value && octetIndex < baEnum.ASN1_MAX_BITSTRING_BYTES) {
-		octet = bitString.value[octetIndex];
+		octet = bitString.value[octetIndex]
 	}
 	return octet
 }
@@ -447,11 +437,11 @@ export const encodeBacnetDate = (buffer: EncodeBuffer, value: Date): void => {
 	}
 
 	if (value.getFullYear() >= START_YEAR) {
-		buffer.buffer[buffer.offset++] = (value.getFullYear() - START_YEAR);
+		buffer.buffer[buffer.offset++] = value.getFullYear() - START_YEAR
 	} else if (value.getFullYear() < MAX_YEARS /* 1900 + 255 max */) {
 		buffer.buffer[buffer.offset++] = value.getFullYear()
 	} else {
-		throw new Error('invalid year: '+ value.getFullYear());
+		throw new Error('invalid year: ' + value.getFullYear())
 	}
 	buffer.buffer[buffer.offset++] = value.getMonth()
 	buffer.buffer[buffer.offset++] = value.getDate()
@@ -683,7 +673,9 @@ export const bacappEncodeApplicationData = (
 			encodeReadAccessSpecification(buffer, value.value)
 			break
 		case undefined:
-      		throw new Error('Cannot encode a value if the type has not been specified');
+			throw new Error(
+				'Cannot encode a value if the type has not been specified',
+			)
 		default:
 			throw new Error('Unknown type')
 	}
@@ -813,7 +805,7 @@ const bacappEncodeContextDatetime = (
 		bacappEncodeDatetime(buffer, value)
 		encodeClosingTag(buffer, tagNumber)
 	} else {
-		throw new Error('wrong Datetime while bacapp encoding context');
+		throw new Error('wrong Datetime while bacapp encoding context')
 	}
 }
 
@@ -2226,12 +2218,7 @@ export const encodeApplicationCharacterString = (
 ): void => {
 	const tmp = getBuffer()
 	encodeBacnetCharacterString(tmp, value, encoding)
-	encodeTag(
-		buffer,
-		baEnum.ApplicationTag.CHARACTER_STRING,
-		false,
-		tmp.offset,
-	)
+	encodeTag(buffer, baEnum.ApplicationTag.CHARACTER_STRING, false, tmp.offset)
 	tmp.buffer.copy(buffer.buffer, buffer.offset, 0, tmp.offset)
 	buffer.offset += tmp.offset
 }
