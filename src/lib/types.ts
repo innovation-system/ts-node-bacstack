@@ -246,6 +246,7 @@ export interface BvlcPacket {
 	len: number
 	func: number
 	msgLength: number
+	originatingIP?: string
 }
 
 export interface ClientOptions {
