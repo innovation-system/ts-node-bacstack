@@ -33,7 +33,7 @@ export const decode = (buffer: Buffer, offset: number) => {
 	let count = 0
 	result = baAsn1.decodeTagNumberAndValue(buffer, offset + len)
 	len += result.len
-	if (result.tagNumber !== baEnum.ApplicationTags.OBJECTIDENTIFIER)
+	if (result.tagNumber !== baEnum.ApplicationTag.OBJECTIDENTIFIER)
 		return undefined
 	decodedValue = baAsn1.decodeObjectId(buffer, offset + len)
 	len += decodedValue.len
@@ -46,14 +46,14 @@ export const decode = (buffer: Buffer, offset: number) => {
 		len++
 		result = baAsn1.decodeTagNumberAndValue(buffer, offset + len)
 		len += result.len
-		if (result.tagNumber !== baEnum.ApplicationTags.SIGNED_INTEGER)
+		if (result.tagNumber !== baEnum.ApplicationTag.SIGNED_INTEGER)
 			return undefined
 		decodedValue = baAsn1.decodeSigned(buffer, offset + len, result.value)
 		len += decodedValue.len
 		position = decodedValue.value
 		result = baAsn1.decodeTagNumberAndValue(buffer, offset + len)
 		len += result.len
-		if (result.tagNumber !== baEnum.ApplicationTags.UNSIGNED_INTEGER)
+		if (result.tagNumber !== baEnum.ApplicationTag.UNSIGNED_INTEGER)
 			return undefined
 		decodedValue = baAsn1.decodeUnsigned(buffer, offset + len, result.value)
 		len += decodedValue.len
@@ -66,14 +66,14 @@ export const decode = (buffer: Buffer, offset: number) => {
 		len++
 		result = baAsn1.decodeTagNumberAndValue(buffer, offset + len)
 		len += result.len
-		if (result.tagNumber !== baEnum.ApplicationTags.SIGNED_INTEGER)
+		if (result.tagNumber !== baEnum.ApplicationTag.SIGNED_INTEGER)
 			return undefined
 		decodedValue = baAsn1.decodeSigned(buffer, offset + len, result.value)
 		len += decodedValue.len
 		position = decodedValue.value
 		result = baAsn1.decodeTagNumberAndValue(buffer, offset + len)
 		len += result.len
-		if (result.tagNumber !== baEnum.ApplicationTags.UNSIGNED_INTEGER)
+		if (result.tagNumber !== baEnum.ApplicationTag.UNSIGNED_INTEGER)
 			return undefined
 		decodedValue = baAsn1.decodeUnsigned(buffer, offset + len, result.value)
 		len += decodedValue.len
@@ -129,7 +129,7 @@ export const decodeAcknowledge = (buffer: Buffer, offset: number) => {
 
 	result = baAsn1.decodeTagNumberAndValue(buffer, offset + len)
 	len += result.len
-	if (result.tagNumber !== baEnum.ApplicationTags.BOOLEAN) return undefined
+	if (result.tagNumber !== baEnum.ApplicationTag.BOOLEAN) return undefined
 	const endOfFile = result.value > 0
 
 	if (baAsn1.decodeIsOpeningTagNumber(buffer, offset + len, 0)) {
@@ -137,14 +137,14 @@ export const decodeAcknowledge = (buffer: Buffer, offset: number) => {
 		len++
 		result = baAsn1.decodeTagNumberAndValue(buffer, offset + len)
 		len += result.len
-		if (result.tagNumber !== baEnum.ApplicationTags.SIGNED_INTEGER)
+		if (result.tagNumber !== baEnum.ApplicationTag.SIGNED_INTEGER)
 			return undefined
 		decodedValue = baAsn1.decodeSigned(buffer, offset + len, result.value)
 		len += decodedValue.len
 		position = decodedValue.value
 		result = baAsn1.decodeTagNumberAndValue(buffer, offset + len)
 		len += result.len
-		if (result.tagNumber !== baEnum.ApplicationTags.OCTET_STRING)
+		if (result.tagNumber !== baEnum.ApplicationTag.OCTET_STRING)
 			return undefined
 		targetBuffer = buffer.slice(offset + len, offset + len + result.value)
 		len += result.value

@@ -47,7 +47,7 @@ export const decode = (buffer: Buffer, offset: number, apduLen: number) => {
 
 	result = baAsn1.decodeTagNumberAndValue(buffer, offset + len)
 	len += result.len
-	if (result.tagNumber !== baEnum.ApplicationTags.OBJECTIDENTIFIER)
+	if (result.tagNumber !== baEnum.ApplicationTag.OBJECTIDENTIFIER)
 		return undefined
 
 	decodedValue = baAsn1.decodeObjectId(buffer, offset + len)
@@ -63,7 +63,7 @@ export const decode = (buffer: Buffer, offset: number, apduLen: number) => {
 
 		result = baAsn1.decodeTagNumberAndValue(buffer, offset + len)
 		len += result.len
-		if (result.tagNumber !== baEnum.ApplicationTags.SIGNED_INTEGER)
+		if (result.tagNumber !== baEnum.ApplicationTag.SIGNED_INTEGER)
 			return undefined
 
 		decodedValue = baAsn1.decodeSigned(buffer, offset + len, result.value)
@@ -72,7 +72,7 @@ export const decode = (buffer: Buffer, offset: number, apduLen: number) => {
 
 		result = baAsn1.decodeTagNumberAndValue(buffer, offset + len)
 		len += result.len
-		if (result.tagNumber !== baEnum.ApplicationTags.OCTET_STRING)
+		if (result.tagNumber !== baEnum.ApplicationTag.OCTET_STRING)
 			return undefined
 
 		decodedValue = baAsn1.decodeOctetString(
@@ -94,7 +94,7 @@ export const decode = (buffer: Buffer, offset: number, apduLen: number) => {
 
 		result = baAsn1.decodeTagNumberAndValue(buffer, offset + len)
 		len += result.len
-		if (result.tagNumber !== baEnum.ApplicationTags.SIGNED_INTEGER)
+		if (result.tagNumber !== baEnum.ApplicationTag.SIGNED_INTEGER)
 			return undefined
 
 		decodedValue = baAsn1.decodeSigned(buffer, offset + len, result.value)
@@ -103,7 +103,7 @@ export const decode = (buffer: Buffer, offset: number, apduLen: number) => {
 
 		result = baAsn1.decodeTagNumberAndValue(buffer, offset + len)
 		len += result.len
-		if (result.tagNumber !== baEnum.ApplicationTags.UNSIGNED_INTEGER)
+		if (result.tagNumber !== baEnum.ApplicationTag.UNSIGNED_INTEGER)
 			return undefined
 
 		decodedValue = baAsn1.decodeUnsigned(buffer, offset + len, result.value)
@@ -113,7 +113,7 @@ export const decode = (buffer: Buffer, offset: number, apduLen: number) => {
 		for (let i = 0; i < blockCount; i++) {
 			result = baAsn1.decodeTagNumberAndValue(buffer, offset + len)
 			len += result.len
-			if (result.tagNumber !== baEnum.ApplicationTags.OCTET_STRING)
+			if (result.tagNumber !== baEnum.ApplicationTag.OCTET_STRING)
 				return undefined
 
 			decodedValue = baAsn1.decodeOctetString(

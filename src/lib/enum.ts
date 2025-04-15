@@ -1927,9 +1927,9 @@ export const StatusFlags = {
 // ASHRE 135-2016 - 20.2.1.4 Application Tags - Enumerators
 /**
  * @readonly
- * @enum {ApplicationTags}
+ * @enum {ApplicationTag}
  */
-export const ApplicationTags = {
+export const ApplicationTag = {
 	NULL: 0,
 	BOOLEAN: 1,
 	UNSIGNED_INTEGER: 2,

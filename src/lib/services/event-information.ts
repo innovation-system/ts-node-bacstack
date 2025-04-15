@@ -79,7 +79,7 @@ export const decode = (buffer: Buffer, offset: number, apduLen: number) => {
 		value.eventTimeStamps = []
 
 		for (let i = 0; i < 3; i++) {
-			if (result.tagNumber !== baEnum.ApplicationTags.NULL) {
+			if (result.tagNumber !== baEnum.ApplicationTag.NULL) {
 				decodedValue = baAsn1.decodeApplicationDate(
 					buffer,
 					offset + len,

@@ -1219,7 +1219,7 @@ export default class Client extends EventEmitter {
 	 * @param {number} objectId.instance - The BACNET object instance to write.
 	 * @param {number} propertyId - The BACNET property id in the specified object to write.
 	 * @param {object[]} values - A list of values to be written to the specified property.
-	 * @param {ApplicationTags} values.tag - The data-type of the value to be written.
+	 * @param {ApplicationTag} values.tag - The data-type of the value to be written.
 	 * @param {number} values.value - The actual value to be written.
 	 * @param {object=} options
 	 * @param {MaxSegmentsAccepted=} options.maxSegments - The maximimal allowed number of segments.
@@ -1233,7 +1233,7 @@ export default class Client extends EventEmitter {
 	 * const client = new bacnet();
 	 *
 	 * client.writeProperty('192.168.1.43', {type: 8, instance: 44301}, 28, [
-	 *   {type: bacnet.enum.ApplicationTags.REAL, value: 100}
+	 *   {type: bacnet.enum.ApplicationTag.REAL, value: 100}
 	 * ], (err) => {
 	 *   console.log('error: ', err);
 	 * });
@@ -1445,7 +1445,7 @@ export default class Client extends EventEmitter {
 	 * @param {number} values.values.property.id - The BACNET property id in the specified object to write.
 	 * @param {number} values.values.property.index - The array index of the property to be written.
 	 * @param {object[]} values.values.value - A list of values to be written to the specified property.
-	 * @param {ApplicationTags} values.values.value.tag - The data-type of the value to be written.
+	 * @param {ApplicationTag} values.values.value.tag - The data-type of the value to be written.
 	 * @param {object} values.values.value.value - The actual value to be written.
 	 * @param {number} values.values.priority - The priority to be used for writing to the property.
 	 * @param {object=} options
@@ -1459,7 +1459,7 @@ export default class Client extends EventEmitter {
 	 *
 	 * const values = [
 	 *   {objectId: {type: 8, instance: 44301}, values: [
-	 *     {property: {id: 28, index: 12}, value: [{type: bacnet.enum.ApplicationTags.BOOLEAN, value: true}], priority: 8}
+	 *     {property: {id: 28, index: 12}, value: [{type: bacnet.enum.ApplicationTag.BOOLEAN, value: true}], priority: 8}
 	 *   ]}
 	 * ];
 	 * client.writePropertyMultiple('192.168.1.43', values, (err) => {
