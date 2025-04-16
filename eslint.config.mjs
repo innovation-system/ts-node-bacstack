@@ -36,10 +36,10 @@ export default defineConfig([
 			ecmaVersion: 5,
 			sourceType: 'module',
 
-			parserOptions: {
-				project: ['./tsconfig.json'],
-			},
-		},
+        parserOptions: {
+            project: ["./tsconfig.json"],
+        },
+    },
 
 		rules: {
 			'global-require': 'off',

@@ -1,14 +1,17 @@
-# TS Node bacnet
+# Node Bacnet
 
-A BACnet® protocol stack written in pure TypeScript from contributors and maintained by [PLUS for Node-RED](http://plus4nodered.com/).
+[![npm](https://img.shields.io/npm/v/@innovation-system/node-bacnet.svg)](https://www.npmjs.com/package/@innovation-system/node-bacnet)
+[![npm](https://img.shields.io/npm/dt/@innovation-system/node-bacnet.svg)](https://www.npmjs.com/package/@innovation-system/node-bacnet)
+[![GitHub issues](https://img.shields.io/github/issues/innovation-system/node-bacnet.svg)](
+
+A BACnet® protocol stack written in pure TypeScript from contributors and maintained by [Innovation-System](https://www.innovation-system.it/).
 BACnet® is a protocol to interact with building automation devices defined by ASHRAE.
-
 
 ## Install
 
 Run the following command in your Node-RED user directory - typically `~/.node-red`
 
-        npm install ts-node-bacnet
+        npm install @innovation-system/node-bacnet
 
 try these options on npm install to build from source if you have problems to install
 
@@ -57,15 +60,13 @@ following services are already supported at this point in time:
 
 ## Contribution
 
-Special thanks to Fabio Huser for the [fundamental work](https://github.com/fh1ch/node-bacnet).
-**Yes, sure!** Please help us to make it even better and become a community member of [PLUS for Node-RED](http://plus4nodered.com/)!
-
-#### Happy coding!
+Special thanks to Fabio Huser for the [fundamental work](https://github.com/fh1ch/node-bacstack).
 
 ## License
 
 MIT
-Copyright (c) 2022-present [PLUS for Node-RED](http://plus4nodered.com/)
+Copyright (c) 2025-present [Innovation-System](https://innovation-system.it/)
+Copyright (c) 2022-2024 [PLUS for Node-RED](http://plus4nodered.com/)
 origin Copyright (c) 2017-2021 Fabio Huser <fabio@fh1.ch>
 
 ## Note
