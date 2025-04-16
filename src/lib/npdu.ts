@@ -1,8 +1,12 @@
 import * as baEnum from './enum'
+import debugLib from 'debug'
 import { EncodeBuffer, BACNetAddress, TargetResult } from './types'
 
+const debug = debugLib('bacnet')
+const trace = debugLib('bacnet:client:trace')
+
 const BACNET_PROTOCOL_VERSION = 1
-const BacnetAddressTypes = {
+const BACNET_ADDRESS_TYPES = {
 	NONE: 0,
 	IP: 1,
 }
@@ -10,7 +14,7 @@ const BacnetAddressTypes = {
 const decodeTarget = (buffer: Buffer, offset: number): TargetResult => {
 	let len = 0
 	const target: BACNetAddress = {
-		type: BacnetAddressTypes.NONE,
+		type: BACNET_ADDRESS_TYPES.NONE,
 		net: (buffer[offset + len++] << 8) | (buffer[offset + len++] << 0),
 	}
 	const adrLen = buffer[offset + len++]
