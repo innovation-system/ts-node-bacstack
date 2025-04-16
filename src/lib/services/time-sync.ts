@@ -12,12 +12,12 @@ export const decode = (buffer: Buffer, offset: number) => {
 	let result: any
 	result = baAsn1.decodeTagNumberAndValue(buffer, offset + len)
 	len += result.len
-	if (result.tagNumber !== baEnum.ApplicationTags.DATE) return
+	if (result.tagNumber !== baEnum.ApplicationTag.DATE) return
 	const date = baAsn1.decodeDate(buffer, offset + len)
 	len += date.len
 	result = baAsn1.decodeTagNumberAndValue(buffer, offset + len)
 	len += result.len
-	if (result.tagNumber !== baEnum.ApplicationTags.TIME) return
+	if (result.tagNumber !== baEnum.ApplicationTag.TIME) return
 	const time = baAsn1.decodeBacnetTime(buffer, offset + len)
 	len += time.len
 	return {

@@ -4,7 +4,7 @@ import {describe, expect, it} from '@jest/globals';
 
 import * as utils from './utils';
 
-describe('bacstack - createObject integration', () => {
+describe('bacnet - createObject integration', () => {
   it('should return a timeout error if no device is available', (next) => {
     const client = new utils.BacnetClient({apduTimeout: 200});
     client.createObject('127.0.0.1', {type: 2, instance: 300}, [

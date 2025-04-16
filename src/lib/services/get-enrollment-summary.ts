@@ -180,7 +180,7 @@ export const decodeAcknowledge = (
 
 		result = baAsn1.decodeTagNumberAndValue(buffer, offset + len)
 		len += result.len
-		if (result.tagNumber !== baEnum.ApplicationTags.OBJECTIDENTIFIER)
+		if (result.tagNumber !== baEnum.ApplicationTag.OBJECTIDENTIFIER)
 			return undefined
 
 		result = baAsn1.decodeObjectId(buffer, offset + len)
@@ -192,7 +192,7 @@ export const decodeAcknowledge = (
 
 		result = baAsn1.decodeTagNumberAndValue(buffer, offset + len)
 		len += result.len
-		if (result.tagNumber !== baEnum.ApplicationTags.ENUMERATED)
+		if (result.tagNumber !== baEnum.ApplicationTag.ENUMERATED)
 			return undefined
 
 		result = baAsn1.decodeEnumerated(buffer, offset + len, result.value)
@@ -201,7 +201,7 @@ export const decodeAcknowledge = (
 
 		result = baAsn1.decodeTagNumberAndValue(buffer, offset + len)
 		len += result.len
-		if (result.tagNumber !== baEnum.ApplicationTags.ENUMERATED)
+		if (result.tagNumber !== baEnum.ApplicationTag.ENUMERATED)
 			return undefined
 
 		result = baAsn1.decodeEnumerated(buffer, offset + len, result.value)
@@ -210,7 +210,7 @@ export const decodeAcknowledge = (
 
 		result = baAsn1.decodeTagNumberAndValue(buffer, offset + len)
 		len += result.len
-		if (result.tagNumber !== baEnum.ApplicationTags.UNSIGNED_INTEGER)
+		if (result.tagNumber !== baEnum.ApplicationTag.UNSIGNED_INTEGER)
 			return undefined
 
 		result = baAsn1.decodeUnsigned(buffer, offset + len, result.value)
@@ -219,7 +219,7 @@ export const decodeAcknowledge = (
 
 		result = baAsn1.decodeTagNumberAndValue(buffer, offset + len)
 		len += result.len
-		if (result.tagNumber !== baEnum.ApplicationTags.UNSIGNED_INTEGER)
+		if (result.tagNumber !== baEnum.ApplicationTag.UNSIGNED_INTEGER)
 			return undefined
 
 		result = baAsn1.decodeUnsigned(buffer, offset + len, result.value)

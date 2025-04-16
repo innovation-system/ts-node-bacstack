@@ -20,7 +20,7 @@ try these options on npm install to build from source if you have problems to in
 ### Features
 
 The BACnet standard defines a wide variety of services as part of it's
-specification. While Node BACstack tries to be as complete as possible,
+specification. While Node bacnet tries to be as complete as possible,
 following services are already supported at this point in time:
 
 | Service                        |                                      Execute                                      | Handle                                                                        |

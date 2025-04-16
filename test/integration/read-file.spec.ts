@@ -1,17 +1,24 @@
-'use strict';
+'use strict'
 
-import {describe, expect, it} from '@jest/globals';
+import { describe, expect, it } from '@jest/globals'
 
-import * as utils from './utils';
+import * as utils from './utils'
 
-describe('bacstack - readFile integration', () => {
-  it('should return a timeout error if no device is available', (next) => {
-    const client = new utils.BacnetClient({apduTimeout: 200});
-    client.readFile('127.0.0.1', {type: 10, instance: 100}, 0, 100, {}, (err, value) => {
-      expect(err.message).toEqual('ERR_TIMEOUT');
-      expect(value).toBeUndefined();
-      client.close();
-      next();
-    });
-  });
-});
+describe('bacnet - readFile integration', () => {
+	it('should return a timeout error if no device is available', (next) => {
+		const client = new utils.BacnetClient({ apduTimeout: 200 })
+		client.readFile(
+			'127.0.0.1',
+			{ type: 10, instance: 100 },
+			0,
+			100,
+			{},
+			(err, value) => {
+				expect(err.message).toEqual('ERR_TIMEOUT')
+				expect(value).toBeUndefined()
+				client.close()
+				next()
+			},
+		)
+	})
+})
