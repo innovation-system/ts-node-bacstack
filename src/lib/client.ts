@@ -294,8 +294,8 @@ export default class Client extends EventEmitter {
 		baApdu.encodeSegmentAck(
 			buffer,
 			baEnum.PduType.SEGMENT_ACK |
-				(negative ? baEnum.PduSegAckBits.NEGATIVE_ACK : 0) |
-				(server ? baEnum.PduSegAckBits.SERVER : 0),
+				(negative ? baEnum.PduSegAckBit.NEGATIVE_ACK : 0) |
+				(server ? baEnum.PduSegAckBit.SERVER : 0),
 			originalInvokeId,
 			sequencenumber,
 			actualWindowSize,

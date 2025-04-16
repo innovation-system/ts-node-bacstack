@@ -1,3 +1,70 @@
+// Utility function to replace underscore's invert
+function invert(obj: Record<string, number>): Record<number, string> {
+	const result: Record<number, string> = {}
+	for (const key in obj) {
+		if (Object.prototype.hasOwnProperty.call(obj, key)) {
+			result[obj[key]] = key
+		}
+	}
+	return result
+}
+
+/**
+ * Turn an enum into a string suitable for debugging.
+ * If value is not found in the enum the value itself is returned as string
+ *
+ * @param {object} group
+ *   Enum group, e.g. bacnet.enum.ConfirmedServiceChoice.
+ *
+ * @param {number} value
+ *   Enum value, e.g. 1.  Note that this *must* be an integer value, so you may
+ *   need to use parseInt().  Non-integer values will result in an exception.
+ *
+ * @param {boolean} [addNumberValue]
+ *   Boolean if the numeric number should be appended or not, default is true
+ *
+ * @param {string} [undefinedFallbackValue]
+ *   String to return if the given value is not found in the Enum object
+ *
+ * @example
+ * const s = getEnumName(
+ *   PropertyIdentifier,
+ *   PropertyIdentifier.PRESENT_VALUE
+ * );
+ * console.log(s); // "PRESENT_VALUE(85)"
+ */
+export function getEnumName(
+	group: Record<string, number>,
+	value: number,
+	addNumberValue: boolean = true,
+	undefinedFallbackValue?: string,
+): string | null {
+	if (!Number.isInteger(value)) {
+		throw new Error(
+			'getEnumName() can only be passed an integer value, was given "' +
+				value +
+				'"',
+		)
+	}
+	let foundEntry: string | null = null
+	try {
+		const invertedGroup = invert(group)
+		foundEntry = invertedGroup[value]
+		if (foundEntry === undefined && undefinedFallbackValue) {
+			foundEntry = undefinedFallbackValue
+		}
+		if (foundEntry === undefined) {
+			foundEntry = value.toString()
+		} else if (addNumberValue) {
+			foundEntry += '(' + value + ')'
+		}
+	} catch (e) {
+		console.trace((e as Error).message)
+		foundEntry = null
+	}
+	return foundEntry
+}
+
 export const PDU_TYPE_MASK = 0xf0
 export const ASN1_MAX_OBJECT = 0x3ff
 export const ASN1_INSTANCE_BITS = 22
@@ -46,6 +113,8 @@ export const ConfirmedServiceChoice = {
 	CONFIRMED_COV_NOTIFICATION_MULTIPLE: 31,
 }
 
+export const ConfirmedServiceChoiceName = invert(ConfirmedServiceChoice)
+
 export const UnconfirmedServiceChoice = {
 	I_AM: 0,
 	I_HAVE: 1,
@@ -60,6 +129,8 @@ export const UnconfirmedServiceChoice = {
 	WRITE_GROUP: 10,
 	UNCONFIRMED_COV_NOTIFICATION_MULTIPLE: 11,
 }
+
+export const UnconfirmedServiceChoiceName = invert(UnconfirmedServiceChoice)
 
 export const AbortReason = {
 	OTHER: 0,
@@ -76,6 +147,8 @@ export const AbortReason = {
 	APDU_TOO_LONG: 11,
 }
 
+export const AbortReasonName = invert(AbortReason)
+
 export const RejectReason = {
 	OTHER: 0,
 	BUFFER_OVERFLOW: 1,
@@ -89,6 +162,8 @@ export const RejectReason = {
 	UNRECOGNIZED_SERVICE: 9,
 }
 
+export const RejectReasonName = invert(RejectReason)
+
 export const ErrorClass = {
 	DEVICE: 0,
 	OBJECT: 1,
@@ -99,6 +174,8 @@ export const ErrorClass = {
 	VT: 6,
 	COMMUNICATION: 7,
 }
+
+export const ErrorClassName = invert(ErrorClass)
 
 export const ErrorCode = {
 	ABORT_APDU_TOO_LONG: 123,
@@ -236,6 +313,8 @@ export const ErrorCode = {
 	WRITE_BDT_FAILED: 116,
 }
 
+export const ErrorCodeName = invert(ErrorCode)
+
 export const AccessAuthenticationFactorDisable = {
 	NONE: 0,
 	DISABLED: 1,
@@ -245,12 +324,18 @@ export const AccessAuthenticationFactorDisable = {
 	DISABLED_DESTROYED: 5,
 }
 
+export const AccessAuthenticationFactorDisableName = invert(
+	AccessAuthenticationFactorDisable,
+)
+
 export const AccessCredentialDisable = {
 	NONE: 0,
 	DISABLE: 1,
 	DISABLE_MANUAL: 2,
 	DISABLE_LOCKOUT: 3,
 }
+
+export const AccessCredentialDisableName = invert(AccessCredentialDisable)
 
 export const AccessCredentialDisableReason = {
 	DISABLED: 0,
@@ -264,6 +349,10 @@ export const AccessCredentialDisableReason = {
 	DISABLED_INACTIVITY: 8,
 	DISABLED_MANUAL: 9,
 }
+
+export const AccessCredentialDisableReasonName = invert(
+	AccessCredentialDisableReason,
+)
 
 export const AccessEvent = {
 	NONE: 0,
@@ -322,17 +411,23 @@ export const AccessEvent = {
 	DENIED_OTHER: 164,
 }
 
+export const AccessEventName = invert(AccessEvent)
+
 export const AccessPassbackMode = {
 	PASSBACK_OFF: 0,
 	HARD_PASSBACK: 1,
 	SOFT_PASSBACK: 2,
 }
 
+export const AccessPassbackModeName = invert(AccessPassbackMode)
+
 export const AccessUserType = {
 	ASSET: 0,
 	GROUP: 1,
 	PERSON: 2,
 }
+
+export const AccessUserTypeName = invert(AccessUserType)
 
 export const AccessZoneOccupancyState = {
 	NORMAL: 0,
@@ -344,10 +439,14 @@ export const AccessZoneOccupancyState = {
 	NOT_SUPPORTED: 6,
 }
 
+export const AccessZoneOccupancyStateName = invert(AccessZoneOccupancyState)
+
 export const Action = {
 	DIRECT: 0,
 	REVERSE: 1,
 }
+
+export const ActionName = invert(Action)
 
 export const AuthenticationFactorType = {
 	UNDEFINED: 0,
@@ -377,6 +476,8 @@ export const AuthenticationFactorType = {
 	USER_PASSWORD: 24,
 }
 
+export const AuthenticationFactorTypeName = invert(AuthenticationFactorType)
+
 export const AuthenticationStatus = {
 	NOT_READY: 0,
 	READY: 1,
@@ -386,6 +487,8 @@ export const AuthenticationStatus = {
 	WAITING_FOR_VERIFICATION: 5,
 	IN_PROGRESS: 6,
 }
+
+export const AuthenticationStatusName = invert(AuthenticationStatus)
 
 export const AuthorizationExemption = {
 	PASSBACK: 0,
@@ -397,6 +500,8 @@ export const AuthorizationExemption = {
 	AUTHORIZATION_DELAY: 6,
 }
 
+export const AuthorizationExemptionName = invert(AuthorizationExemption)
+
 export const AuthorizationMode = {
 	AUTHORIZE: 0,
 	GRANT_ACTIVE: 1,
@@ -405,6 +510,8 @@ export const AuthorizationMode = {
 	AUTHORIZATION_DELAYED: 4,
 	NONE: 5,
 }
+
+export const AuthorizationModeName = invert(AuthorizationMode)
 
 export const BackupState = {
 	IDLE: 0,
@@ -416,6 +523,8 @@ export const BackupState = {
 	RESTORE_FAILURE: 6,
 }
 
+export const BackupStateName = invert(BackupState)
+
 export const BinaryLightingPV = {
 	OFF: 0,
 	ON: 1,
@@ -425,10 +534,14 @@ export const BinaryLightingPV = {
 	STOP: 5,
 }
 
+export const BinaryLightingPVName = invert(BinaryLightingPV)
+
 export const BinaryPV = {
 	INACTIVE: 0,
 	ACTIVE: 1,
 }
+
+export const BinaryPVName = invert(BinaryPV)
 
 export const DeviceStatus = {
 	OPERATIONAL: 0,
@@ -438,6 +551,8 @@ export const DeviceStatus = {
 	NON_OPERATIONAL: 4,
 	BACKUP_IN_PROGRESS: 5,
 }
+
+export const DeviceStatusName = invert(DeviceStatus)
 
 export const DoorAlarmState = {
 	NORMAL: 0,
@@ -451,11 +566,15 @@ export const DoorAlarmState = {
 	EGRESS_OPEN: 8,
 }
 
+export const DoorAlarmStateName = invert(DoorAlarmState)
+
 export const DoorSecuredStatus = {
 	SECURED: 0,
 	UNSECURED: 1,
 	UNKNOWN: 2,
 }
+
+export const DoorSecuredStatusName = invert(DoorSecuredStatus)
 
 export const DoorStatus = {
 	CLOSED: 0,
@@ -470,12 +589,16 @@ export const DoorStatus = {
 	LIMITED_OPENED: 9,
 }
 
+export const DoorStatusName = invert(DoorStatus)
+
 export const DoorValue = {
 	LOCK: 0,
 	UNLOCK: 1,
 	PULSE_UNLOCK: 2,
 	EXTENDED_PULSE_UNLOCK: 3,
 }
+
+export const DoorValueName = invert(DoorValue)
 
 export const EngineeringUnits = {
 	METERS_PER_SECOND_PER_SECOND: 166,
@@ -742,6 +865,8 @@ export const EngineeringUnits = {
 	MINUTES_PER_DEGREE_KELVIN: 236,
 }
 
+export const EngineeringUnitsName = invert(EngineeringUnits)
+
 export const EscalatorFault = {
 	CONTROLLER_FAULT: 0,
 	DRIVE_AND_MOTOR_FAULT: 1,
@@ -754,6 +879,8 @@ export const EscalatorFault = {
 	COMB_PLATE_FAULT: 8,
 }
 
+export const EscalatorFaultName = invert(EscalatorFault)
+
 export const EscalatorMode = {
 	UNKNOWN: 0,
 	STOP: 1,
@@ -762,6 +889,8 @@ export const EscalatorMode = {
 	INSPECTION: 4,
 	OUT_OF_SERVICE: 5,
 }
+
+export const EscalatorModeName = invert(EscalatorMode)
 
 export const EscalatorOperationDirection = {
 	UNKNOWN: 0,
@@ -772,6 +901,10 @@ export const EscalatorOperationDirection = {
 	DOWN_REDUCED_SPEED: 5,
 }
 
+export const EscalatorOperationDirectionName = invert(
+	EscalatorOperationDirection,
+)
+
 export const EventState = {
 	NORMAL: 0,
 	FAULT: 1,
@@ -780,6 +913,8 @@ export const EventState = {
 	LOW_LIMIT: 4,
 	LIFE_SAFETY_ALARM: 5,
 }
+
+export const EventStateName = invert(EventState)
 
 export const EventType = {
 	CHANGE_OF_BITSTRING: 0,
@@ -805,6 +940,8 @@ export const EventType = {
 	CHANGE_OF_TIMER: 22,
 }
 
+export const EventTypeName = invert(EventType)
+
 export const FaultType = {
 	NONE: 0,
 	FAULT_CHARACTERSTRING: 1,
@@ -816,16 +953,22 @@ export const FaultType = {
 	FAULT_LISTED: 7,
 }
 
+export const FaultTypeName = invert(FaultType)
+
 export const FileAccessMethod = {
 	RECORD_ACCESS: 0,
 	STREAM_ACCESS: 1,
 }
+
+export const FileAccessMethodName = invert(FileAccessMethod)
 
 export const IPMode = {
 	NORMAL: 0,
 	FOREIGN: 1,
 	BBMD: 2,
 }
+
+export const IPModeName = invert(IPMode)
 
 export const LifeSafetyMode = {
 	OFF: 0,
@@ -845,6 +988,8 @@ export const LifeSafetyMode = {
 	DEFAULT: 14,
 }
 
+export const LifeSafetyModeName = invert(LifeSafetyMode)
+
 export const LifeSafetyOperation = {
 	NONE: 0,
 	SILENCE: 1,
@@ -857,6 +1002,8 @@ export const LifeSafetyOperation = {
 	UNSILENCE_AUDIBLE: 8,
 	UNSILENCE_VISUAL: 9,
 }
+
+export const LifeSafetyOperationName = invert(LifeSafetyOperation)
 
 export const LifeSafetyState = {
 	QUIET: 0,
@@ -885,6 +1032,8 @@ export const LifeSafetyState = {
 	TEST_SUPERVISORY: 23,
 }
 
+export const LifeSafetyStateName = invert(LifeSafetyState)
+
 export const LiftCarDirection = {
 	UNKNOWN: 0,
 	NONE: 1,
@@ -894,11 +1043,15 @@ export const LiftCarDirection = {
 	UP_AND_DOWN: 5,
 }
 
+export const LiftCarDirectionName = invert(LiftCarDirection)
+
 export const LiftCarDoorCommand = {
 	NONE: 0,
 	OPEN: 1,
 	CLOSE: 2,
 }
+
+export const LiftCarDoorCommandName = invert(LiftCarDoorCommand)
 
 export const LiftCarDriveStatus = {
 	UNKNOWN: 0,
@@ -912,6 +1065,8 @@ export const LiftCarDriveStatus = {
 	THREE_FLOOR_JUMP: 8,
 	MULTI_FLOOR_JUMP: 9,
 }
+
+export const LiftCarDriveStatusName = invert(LiftCarDriveStatus)
 
 export const LiftCarMode = {
 	UNKNOWN: 0,
@@ -929,6 +1084,8 @@ export const LiftCarMode = {
 	OUT_OF_SERVICE: 12,
 	OCCUPANT_EVACUATION: 13,
 }
+
+export const LiftCarModeName = invert(LiftCarMode)
 
 export const LiftFault = {
 	CONTROLLER_FAULT: 0,
@@ -950,6 +1107,8 @@ export const LiftFault = {
 	LOAD_MEASUREMENT_FAULT: 16,
 }
 
+export const LiftFaultName = invert(LiftFault)
+
 export const LiftGroupMode = {
 	UNKNOWN: 0,
 	NORMAL: 1,
@@ -960,6 +1119,8 @@ export const LiftGroupMode = {
 	UP_PEAK: 6,
 }
 
+export const LiftGroupModeName = invert(LiftGroupMode)
+
 export const LightingInProgress = {
 	IDLE: 0,
 	FADE_ACTIVE: 1,
@@ -967,6 +1128,8 @@ export const LightingInProgress = {
 	NOT_CONTROLLED: 3,
 	OTHER: 4,
 }
+
+export const LightingInProgressName = invert(LightingInProgress)
 
 export const LightingOperation = {
 	NONE: 0,
@@ -982,11 +1145,15 @@ export const LightingOperation = {
 	STOP: 10,
 }
 
+export const LightingOperationName = invert(LightingOperation)
+
 export const LightingTransition = {
 	NONE: 0,
 	FADE: 1,
 	RAMP: 2,
 }
+
+export const LightingTransitionName = invert(LightingTransition)
 
 export const LockStatus = {
 	LOCKED: 0,
@@ -996,11 +1163,15 @@ export const LockStatus = {
 	UNKNOWN: 4,
 }
 
+export const LockStatusName = invert(LockStatus)
+
 export const LoggingType = {
 	POLLED: 0,
 	COV: 1,
 	TRIGGERED: 2,
 }
+
+export const LoggingTypeName = invert(LoggingType)
 
 export const Maintenance = {
 	NONE: 0,
@@ -1009,12 +1180,16 @@ export const Maintenance = {
 	NEED_SERVICE_INOPERATIVE: 3,
 }
 
+export const MaintenanceName = invert(Maintenance)
+
 export const NetworkNumberQuality = {
 	UNKNOWN: 0,
 	LEARNED: 1,
 	LEARNED_CONFIGURED: 2,
 	CONFIGURED: 3,
 }
+
+export const NetworkNumberQualityName = invert(NetworkNumberQuality)
 
 export const NetworkPortCommand = {
 	IDLE: 0,
@@ -1026,6 +1201,8 @@ export const NetworkPortCommand = {
 	DISCONNECT: 6,
 	RESTART_PORT: 7,
 }
+
+export const NetworkPortCommandName = invert(NetworkPortCommand)
 
 export const NetworkType = {
 	ETHERNET: 0,
@@ -1039,6 +1216,8 @@ export const NetworkType = {
 	IPV6: 9,
 	SERIAL: 10,
 }
+
+export const NetworkTypeName = invert(NetworkType)
 
 export const NodeType = {
 	UNKNOWN: 0,
@@ -1065,11 +1244,15 @@ export const NodeType = {
 	ZONE: 21,
 }
 
+export const NodeTypeName = invert(NodeType)
+
 export const NotifyType = {
 	ALARM: 0,
 	EVENT: 1,
 	ACK_NOTIFICATION: 2,
 }
+
+export const NotifyTypeName = invert(NotifyType)
 
 export const ObjectType = {
 	ACCESS_CREDENTIAL: 32,
@@ -1134,10 +1317,14 @@ export const ObjectType = {
 	TREND_LOG_MULTIPLE: 27,
 }
 
+export const ObjectTypeName = invert(ObjectType)
+
 export const Polarity = {
 	NORMAL: 0,
 	REVERSE: 1,
 }
+
+export const PolarityName = invert(Polarity)
 
 export const ProgramError = {
 	NORMAL: 0,
@@ -1146,6 +1333,8 @@ export const ProgramError = {
 	PROGRAM: 3,
 	OTHER: 4,
 }
+
+export const ProgramErrorName = invert(ProgramError)
 
 export const ProgramRequest = {
 	READY: 0,
@@ -1156,6 +1345,8 @@ export const ProgramRequest = {
 	UNLOAD: 5,
 }
 
+export const ProgramRequestName = invert(ProgramRequest)
+
 export const ProgramState = {
 	IDLE: 0,
 	LOADING: 1,
@@ -1164,6 +1355,8 @@ export const ProgramState = {
 	HALTED: 4,
 	UNLOADING: 5,
 }
+
+export const ProgramStateName = invert(ProgramState)
 
 export const PropertyIdentifier = {
 	ABSENTEE_LIMIT: 244,
@@ -1623,12 +1816,16 @@ export const PropertyIdentifier = {
 	ZONE_TO: 321,
 }
 
+export const PropertyIdentifierName = invert(PropertyIdentifier)
+
 export const ProtocolLevel = {
 	PHYSICAL: 0,
 	PROTOCOL: 1,
 	BACNET_APPLICATION: 2,
 	NON_BACNET_APPLICATION: 3,
 }
+
+export const ProtocolLevelName = invert(ProtocolLevel)
 
 export const Relationship = {
 	UNKNOWN: 0,
@@ -1663,6 +1860,8 @@ export const Relationship = {
 	RECEIVES_STEAM: 29,
 }
 
+export const RelationshipName = invert(Relationship)
+
 export const Reliability = {
 	NO_FAULT_DETECTED: 0,
 	NO_SENSOR: 1,
@@ -1690,6 +1889,8 @@ export const Reliability = {
 	REFERENCED_OBJECT_FAULT: 24,
 }
 
+export const ReliabilityName = invert(Reliability)
+
 export const RestartReason = {
 	UNKNOWN: 0,
 	COLDSTART: 1,
@@ -1702,6 +1903,8 @@ export const RestartReason = {
 	ACTIVATE_CHANGES: 8,
 }
 
+export const RestartReasonName = invert(RestartReason)
+
 export const SecurityLevel = {
 	INCAPABLE: 0,
 	PLAIN: 1,
@@ -1711,12 +1914,16 @@ export const SecurityLevel = {
 	ENCRYPTED_END_TO_END: 5,
 }
 
+export const SecurityLevelName = invert(SecurityLevel)
+
 export const SecurityPolicy = {
 	PLAIN_NON_TRUSTED: 0,
 	PLAIN_TRUSTED: 1,
 	SIGNED_TRUSTED: 2,
 	ENCRYPTED_TRUSTED: 3,
 }
+
+export const SecurityPolicyName = invert(SecurityPolicy)
 
 export const Segmentation = {
 	SEGMENTED_BOTH: 0,
@@ -1725,12 +1932,16 @@ export const Segmentation = {
 	NO_SEGMENTATION: 3,
 }
 
+export const SegmentationName = invert(Segmentation)
+
 export const ShedState = {
 	SHED_INACTIVE: 0,
 	SHED_REQUEST_PENDING: 1,
 	SHED_COMPLIANT: 2,
 	SHED_NON_COMPLIANT: 3,
 }
+
+export const ShedStateName = invert(ShedState)
 
 export const SilencedState = {
 	UNSILENCED: 0,
@@ -1739,11 +1950,15 @@ export const SilencedState = {
 	ALL_SILENCED: 3,
 }
 
+export const SilencedStateName = invert(SilencedState)
+
 export const TimerState = {
 	IDLE: 0,
 	RUNNING: 1,
 	EXPIRED: 2,
 }
+
+export const TimerStateName = invert(TimerState)
 
 export const TimerTransition = {
 	NONE: 0,
@@ -1756,6 +1971,8 @@ export const TimerTransition = {
 	EXPIRED_TO_RUNNING: 7,
 }
 
+export const TimerTransitionName = invert(TimerTransition)
+
 export const VTClass = {
 	DEFAULT_TERMINAL: 0,
 	ANSI_X3_64: 1,
@@ -1766,12 +1983,16 @@ export const VTClass = {
 	IBM_3130: 6,
 }
 
+export const VTClassName = invert(VTClass)
+
 export const WriteStatus = {
 	IDLE: 0,
 	IN_PROGRESS: 1,
 	SUCCESSFUL: 2,
 	FAILED: 3,
 }
+
+export const WriteStatusName = invert(WriteStatus)
 
 // ASHRE 135-2016 - 21 FORMAL DESCRIPTION OF APPLICATION PROTOCOL DATA UNITS - Bitstrings
 export const DaysOfWeek = {
@@ -1784,22 +2005,30 @@ export const DaysOfWeek = {
 	SUNDAY: 6,
 }
 
+export const DaysOfWeekName = invert(DaysOfWeek)
+
 export const EventTransitionBits = {
 	TO_OFFNORMAL: 0,
 	TO_FAULT: 1,
 	TO_NORMAL: 2,
 }
 
+export const EventTransitionBitsName = invert(EventTransitionBits)
+
 export const LimitEnable = {
 	LOW_LIMIT_ENABLE: 0,
 	HIGH_LIMIT_ENABLE: 1,
 }
+
+export const LimitEnableName = invert(LimitEnable)
 
 export const LogStatus = {
 	LOG_DISABLED: 0,
 	BUFFER_PURGED: 1,
 	LOG_INTERRUPTED: 2,
 }
+
+export const LogStatusName = invert(LogStatus)
 
 export const ObjectTypesSupported = {
 	ANALOG_INPUT: 0,
@@ -1864,11 +2093,15 @@ export const ObjectTypesSupported = {
 	LIFT: 59,
 }
 
+export const ObjectTypesSupportedName = invert(ObjectTypesSupported)
+
 export const ResultFlags = {
 	FIRST_ITEM: 0,
 	LAST_ITEM: 1,
 	MORE_ITEMS: 2,
 }
+
+export const ResultFlagsName = invert(ResultFlags)
 
 export const ServicesSupported = {
 	ACKNOWLEDGE_ALARM: 0,
@@ -1917,12 +2150,16 @@ export const ServicesSupported = {
 	UNCONFIRMED_COV_NOTIFICATION_MULTIPLE: 43,
 }
 
+export const ServicesSupportedName = invert(ServicesSupported)
+
 export const StatusFlags = {
 	IN_ALARM: 0,
 	FAULT: 1,
 	OVERRIDDEN: 2,
 	OUT_OF_SERVICE: 3,
 }
+
+export const StatusFlagsName = invert(StatusFlags)
 
 // ASHRE 135-2016 - 20.2.1.4 Application Tags - Enumerators
 /**
@@ -1967,6 +2204,8 @@ export const ApplicationTag = {
 	LOG_RECORD: 120,
 }
 
+export const ApplicationTagName = invert(ApplicationTag)
+
 // ASHRE 135-2016 - J.2.1.1 BVLC-Result: Format - Enumerators
 export const BvlcResultFormat = {
 	SUCCESSFUL_COMPLETION: 0x0000,
@@ -1977,6 +2216,8 @@ export const BvlcResultFormat = {
 	DELETE_FOREIGN_DEVICE_TABLE_ENTRY_NAK: 0x0050,
 	DISTRIBUTE_BROADCAST_TO_NETWORK_NAK: 0x0060,
 }
+
+export const BvlcResultFormatName = invert(BvlcResultFormat)
 
 // ASHRE 135-2016 - J.2.1 BVLC-Result: Purpose - Enumerators
 export const BvlcResultPurpose = {
@@ -1995,6 +2236,8 @@ export const BvlcResultPurpose = {
 	SECURE_BVLL: 0x0c,
 }
 
+export const BvlcResultPurposeName = invert(BvlcResultPurpose)
+
 // ASHRE 135-2016 - 20.2.9 Encoding of a Character String Value - Enumerators
 export const CharacterStringEncoding = {
 	UTF_8: 0,
@@ -2005,11 +2248,15 @@ export const CharacterStringEncoding = {
 	ISO_8859_1: 5,
 }
 
+export const CharacterStringEncodingName = invert(CharacterStringEncoding)
+
 // ASHRE 135-2016 - 13.3.3 CHANGE_OF_VALUE Event Algorithm - Internal
-export const CovTypes = {
+export const CovType = {
 	REAL: 0,
 	BIT_STRING: 1,
 }
+
+export const CovTypeName = invert(CovType)
 
 // ASHRE 135-2016 - 16.1.1.1.2 Enable/Disable - Enumerators
 /**
@@ -2021,6 +2268,8 @@ export const EnableDisable = {
 	DISABLE: 1,
 	DISABLE_INITIATION: 2,
 }
+
+export const EnableDisableName = invert(EnableDisable)
 
 // ASHRE 135-2016 - 20.1.2.5 max-apdu-length-accepted - Enumerators
 /**
@@ -2035,6 +2284,8 @@ export const MaxApduLengthAccepted = {
 	OCTETS_1024: 0b0100,
 	OCTETS_1476: 0b0101,
 }
+
+export const MaxApduLengthAcceptedName = invert(MaxApduLengthAccepted)
 
 // ASHRE 135-2016 - 20.1.2.4 max-segments-accepted - Enumerators
 /**
@@ -2051,6 +2302,8 @@ export const MaxSegmentsAccepted = {
 	SEGMENTS_64: 0b110 << 4,
 	SEGMENTS_65: 0b111 << 4,
 }
+
+export const MaxSegmentsAcceptedName = invert(MaxSegmentsAccepted)
 
 // ASHRE 135-2016 - 6.2.4 Network Layer Message Type - Enumerators
 export const NetworkLayerMessageType = {
@@ -2076,6 +2329,8 @@ export const NetworkLayerMessageType = {
 	NETWORK_NUMBER_IS: 0x13,
 }
 
+export const NetworkLayerMessageTypeName = invert(NetworkLayerMessageType)
+
 // ASHRE 135-2016 - 6.2.2 Network Layer Protocol Control Information - Enumerators
 export const NpduControlBit = {
 	EXPECTING_REPLY: 1 << 2,
@@ -2083,6 +2338,8 @@ export const NpduControlBit = {
 	DESTINATION_SPECIFIED: 1 << 5,
 	NETWORK_LAYER_MESSAGE: 1 << 7,
 }
+
+export const NpduControlBitName = invert(NpduControlBit)
 
 // ASHRE 135-2016 - 6.2.2 Network Layer Protocol Control Information - Enumerators
 export const NpduControlPriority = {
@@ -2092,6 +2349,8 @@ export const NpduControlPriority = {
 	LIFE_SAFETY_MESSAGE: 0b11,
 }
 
+export const NpduControlPriorityName = invert(NpduControlPriority)
+
 // ASHRE 135-2016 - 20.1.2.11 Format of the BACnet-Confirmed-Request-PDU - Enumerators
 export const PduConReqBit = {
 	SEGMENTED_RESPONSE_ACCEPTED: 1 << 1,
@@ -2099,11 +2358,15 @@ export const PduConReqBit = {
 	SEGMENTED_MESSAGE: 1 << 3,
 }
 
+export const PduConReqBitName = invert(PduConReqBit)
+
 // ASHRE 135-2016 - 20.1.6.6 Format of the BACnet-SegmentACK-PDU - Enumerators
-export const PduSegAckBits = {
+export const PduSegAckBit = {
 	SERVER: 1 << 0,
 	NEGATIVE_ACK: 1 << 1,
 }
+
+export const PduSegAckBitName = invert(PduSegAckBit)
 
 // ASHRE 135-2016 - 21 FORMAL DESCRIPTION OF APPLICATION PROTOCOL DATA UNITS - Enumerators
 export const PduType = {
@@ -2116,6 +2379,8 @@ export const PduType = {
 	REJECT: 6 << 4,
 	ABORT: 7 << 4,
 }
+
+export const PduTypeName = invert(PduType)
 
 // ASHRE 135-2016 - 21 FORMAL DESCRIPTION OF APPLICATION PROTOCOL DATA UNITS - Enumerators
 export const PropertyStates = {
@@ -2179,12 +2444,16 @@ export const PropertyStates = {
 	EXTENDED_VALUE: 63,
 }
 
+export const PropertyStatesName = invert(PropertyStates)
+
 // ASHRE 135-2016 - 15.8.1.1.4 Range - Internal
 export const ReadRangeType = {
 	BY_POSITION: 0,
 	BY_SEQUENCE_NUMBER: 1,
 	BY_TIME_REFERENCE_TIME_COUNT: 2,
 }
+
+export const ReadRangeTypeName = invert(ReadRangeType)
 
 // ASHRE 135-2016 - 16.4.1.1.1 Reinitialized State of Device - Enumerators
 /**
@@ -2202,9 +2471,13 @@ export const ReinitializedState = {
 	ACTIVATE_CHANGES: 7,
 }
 
+export const ReinitializedStateName = invert(ReinitializedState)
+
 // ASHRE 135-2016 - 21 FORMAL DESCRIPTION OF APPLICATION PROTOCOL DATA UNITS - Internal
 export const TimeStamp = {
 	TIME: 0,
 	SEQUENCE_NUMBER: 1,
 	DATETIME: 2,
 }
+
+export const TimeStampName = invert(TimeStamp)
