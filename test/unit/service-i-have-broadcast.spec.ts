@@ -5,16 +5,16 @@ import { describe, expect, it } from '@jest/globals'
 import * as utils from './utils'
 import * as baServices from '../../src/lib/services'
 
-describe('bacnet - Services layer IhaveBroadcast unit', () => {
+describe('bacnet - Services layer iHave unit', () => {
 	it('should successfully encode and decode', () => {
 		const buffer = utils.getBuffer()
-		baServices.iHaveBroadcast.encode(
+		baServices.iHave.encode(
 			buffer,
 			{ type: 8, instance: 443 },
 			{ type: 0, instance: 4 },
 			'LgtCmd01',
 		)
-		const result = baServices.iHaveBroadcast.decode(
+		const result = baServices.iHave.decode(
 			buffer.buffer,
 			0,
 			buffer.offset,

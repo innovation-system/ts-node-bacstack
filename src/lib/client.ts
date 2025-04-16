@@ -22,28 +22,92 @@ import {
 	WritePropertyOptions,
 	ErrorCallback,
 	DataCallback,
-	DecodeAcknowledgeSingleResult,
 	DecodeAcknowledgeMultipleResult,
 	BACNetReadAccessSpecification,
 	DeviceCommunicationOptions,
 	ReinitializeDeviceOptions,
+	EncodeBuffer,
+	BACnetMessage,
+	BACnetMessageBase,
+	BACnetMessageHeader,
+	BACnetError,
+	BACNetEventInformation,
+	BACNetReadAccess,
+	BACNetAlarm,
+	BACNetBitString,
+	Abort,
+	SimpleAck,
+	SegmentAck,
+	UnconfirmedServiceRequest,
+	ConfirmedServiceRequest,
+	ServiceMessage,
+	SegmentableMessage,
+	ConfirmedServiceRequestMessage,
+	ComplexAck,
+	ComplexAckMessage,
+	HasInvokeId,
+	ReceiverAddress,
 } from './types'
 
-const debug = debugLib('bacstack')
+const debug = debugLib('bacnet')
+const trace = debugLib('bacnet:client:trace')
 
+const ALL_INTERFACES = '0.0.0.0'
+const LOCALHOST_INTERFACES_IPV4 = '127.0.0.1'
+const BROADCAST_ADDRESS = '255.255.255.255'
 const DEFAULT_HOP_COUNT = 0xff
 const BVLC_HEADER_LENGTH = 4
+const BVLC_FWD_HEADER_LENGTH = 10 // FORWARDED_NPDU
+
+const beU = baEnum.UnconfirmedServiceChoice
+const unconfirmedServiceMap = {
+	[beU.I_AM]: 'iAm',
+	[beU.WHO_IS]: 'whoIs',
+	[beU.WHO_HAS]: 'whoHas',
+	[beU.UNCONFIRMED_COV_NOTIFICATION]: 'covNotifyUnconfirmed',
+	[beU.TIME_SYNCHRONIZATION]: 'timeSync',
+	[beU.UTC_TIME_SYNCHRONIZATION]: 'timeSyncUTC',
+	[beU.UNCONFIRMED_EVENT_NOTIFICATION]: 'eventNotify',
+	[beU.I_HAVE]: 'iHave',
+	[beU.UNCONFIRMED_PRIVATE_TRANSFER]: 'privateTransfer',
+}
+const beC = baEnum.ConfirmedServiceChoice
+const confirmedServiceMap = {
+	[beC.READ_PROPERTY]: 'readProperty',
+	[beC.WRITE_PROPERTY]: 'writeProperty',
+	[beC.READ_PROPERTY_MULTIPLE]: 'readPropertyMultiple',
+	[beC.WRITE_PROPERTY_MULTIPLE]: 'writePropertyMultiple',
+	[beC.CONFIRMED_COV_NOTIFICATION]: 'covNotify',
+	[beC.ATOMIC_WRITE_FILE]: 'atomicWriteFile',
+	[beC.ATOMIC_READ_FILE]: 'atomicReadFile',
+	[beC.SUBSCRIBE_COV]: 'subscribeCov',
+	[beC.SUBSCRIBE_COV_PROPERTY]: 'subscribeProperty',
+	[beC.DEVICE_COMMUNICATION_CONTROL]: 'deviceCommunicationControl',
+	[beC.REINITIALIZE_DEVICE]: 'reinitializeDevice',
+	[beC.CONFIRMED_EVENT_NOTIFICATION]: 'eventNotify',
+	[beC.READ_RANGE]: 'readRange',
+	[beC.CREATE_OBJECT]: 'createObject',
+	[beC.DELETE_OBJECT]: 'deleteObject',
+	[beC.ACKNOWLEDGE_ALARM]: 'alarmAcknowledge',
+	[beC.GET_ALARM_SUMMARY]: 'getAlarmSummary',
+	[beC.GET_ENROLLMENT_SUMMARY]: 'getEnrollmentSummary',
+	[beC.GET_EVENT_INFORMATION]: 'getEventInformation',
+	[beC.LIFE_SAFETY_OPERATION]: 'lifeSafetyOperation',
+	[beC.ADD_LIST_ELEMENT]: 'addListElement',
+	[beC.REMOVE_LIST_ELEMENT]: 'removeListElement',
+	[beC.CONFIRMED_PRIVATE_TRANSFER]: 'privateTransfer',
+}
 
 /**
- * To be able to communicate to BACNET devices, you have to initialize a new bacstack instance.
- * @class bacstack
- * @param {object=} this._settings - The options object used for parameterizing the bacstack.
+ * To be able to communicate to BACNET devices, you have to initialize a new bacnet instance.
+ * @class bacnet
+ * @param {object=} this._settings - The options object used for parameterizing the bacnet.
  * @param {number=} [options.port=47808] - BACNET communication port for listening and sending.
  * @param {string=} options.interface - Specific BACNET communication interface if different from primary one.
  * @param {string=} [options.broadcastAddress=255.255.255.255] - The address used for broadcast messages.
  * @param {number=} [options.apduTimeout=3000] - The timeout in milliseconds until a transaction should be interpreted as error.
  * @example
- * const bacnet = require('bacstack');
+ * const bacnet = require('node-bacnet');
  *
  * const client = new bacnet({
  *   port: 47809,                          // Use BAC1 as communication port
@@ -74,11 +138,14 @@ export default class Client extends EventEmitter {
 
 		this._settings = {
 			port: options.port || 47808,
-			interface: options.interface,
+			interface: options.interface || ALL_INTERFACES,
 			transport: options.transport,
-			broadcastAddress: options.broadcastAddress || '255.255.255.255',
+			broadcastAddress: options.broadcastAddress || BROADCAST_ADDRESS,
 			apduTimeout: options.apduTimeout || 3000,
 		}
+
+		options.reuseAddr =
+			options.reuseAddr === undefined ? true : !!options.reuseAddr
 
 		this._transport =
 			this._settings.transport ||
@@ -86,6 +153,7 @@ export default class Client extends EventEmitter {
 				port: this._settings.port,
 				interface: this._settings.interface,
 				broadcastAddress: this._settings.broadcastAddress,
+				reuseAddr: options.reuseAddr,
 			} as TransportSettings)
 
 		// Setup code
@@ -95,17 +163,31 @@ export default class Client extends EventEmitter {
 		this._transport.open()
 	}
 
-	// Helper utils
+	/**
+	 *
+	 * @returns {number}
+	 * @private
+	 */
 	private _getInvokeId() {
 		const id = this._invokeCounter++
 		if (id >= 256) this._invokeCounter = 1
 		return id - 1
 	}
 
+	/**
+	 *
+	 * @param id
+	 * @param err
+	 * @param result
+	 * @returns {*}
+	 * @private
+	 */
 	private _invokeCallback(id: number, err: Error | null, result?: any) {
 		const callback = this._invokeStore[id]
-		if (callback) return callback(err, result)
-		debug('InvokeId ', id, ' not found -> drop package')
+		if (callback) {
+			return void callback(err, result)
+		}
+		debug('InvokeId', id, 'not found -> drop package')
 	}
 
 	private _addCallback(
@@ -123,14 +205,33 @@ export default class Client extends EventEmitter {
 		}
 	}
 
-	private _getBuffer() {
-		return {
-			buffer: Buffer.alloc(this._transport.getMaxPayload()),
-			offset: BVLC_HEADER_LENGTH,
-		}
+	/**
+	 *
+	 * @param isForwarded
+	 * @returns {{offset: (number), buffer: *}}
+	 * @private
+	 */
+	private _getBuffer(isForwarded?) {
+		return Object.assign(
+			{},
+			{
+				buffer: Buffer.alloc(this._transport.getMaxPayload()),
+				offset: isForwarded
+					? BVLC_FWD_HEADER_LENGTH
+					: BVLC_HEADER_LENGTH,
+			},
+		)
 	}
 
-	// Service Handlers
+	/**
+	 *
+	 * @param invokeId
+	 * @param buffer
+	 * @param offset
+	 * @param length
+	 * @returns {*}
+	 * @private
+	 */
 	private _processError(
 		invokeId: number,
 		buffer: Buffer,
@@ -147,6 +248,12 @@ export default class Client extends EventEmitter {
 		)
 	}
 
+	/**
+	 *
+	 * @param invokeId
+	 * @param reason
+	 * @private
+	 */
 	private _processAbort(invokeId: number, reason: number) {
 		this._invokeCallback(
 			invokeId,
@@ -154,15 +261,27 @@ export default class Client extends EventEmitter {
 		)
 	}
 
+	/**
+	 *
+	 * @param receiver
+	 * @param negative
+	 * @param server
+	 * @param originalInvokeId
+	 * @param sequencenumber
+	 * @param actualWindowSize
+	 * @private
+	 */
 	private _segmentAckResponse(
-		receiver: string,
+		receiver: string | ReceiverAddress,
 		negative: boolean,
 		server: boolean,
 		originalInvokeId: number,
 		sequencenumber: number,
 		actualWindowSize: number,
 	) {
-		const buffer = this._getBuffer()
+		const receiverObj =
+			typeof receiver === 'string' ? { address: receiver } : receiver
+		const buffer = this._getBuffer(receiverObj && receiverObj.forwardedFrom)
 		baNpdu.encode(
 			buffer,
 			baEnum.NpduControlPriority.NORMAL_MESSAGE,
@@ -186,35 +305,44 @@ export default class Client extends EventEmitter {
 			baEnum.BvlcResultPurpose.ORIGINAL_UNICAST_NPDU,
 			buffer.offset,
 		)
-		this._transport.send(buffer.buffer, buffer.offset, receiver)
+		this._transport.send(
+			buffer.buffer,
+			buffer.offset,
+			typeof receiver === 'string' ? receiver : receiver.address,
+		)
 	}
 
+	/**
+	 *
+	 * @param msg
+	 * @param first
+	 * @param moreFollows
+	 * @param buffer
+	 * @param offset
+	 * @param length
+	 * @private
+	 */
 	private _performDefaultSegmentHandling(
-		sender: any,
-		adr: string,
-		type: number,
-		service: number,
-		invokeId: number,
-		maxSegments: number,
-		maxApdu: number,
-		sequencenumber: number,
+		msg: BACnetMessage,
 		first: boolean,
-		moreFollows: number,
+		moreFollows: boolean,
 		buffer: Buffer,
 		offset: number,
 		length: number,
-	) {
+	): void {
 		if (first) {
 			this._segmentStore = []
-			type &= ~baEnum.PduConReqBit.SEGMENTED_MESSAGE
+			msg.type &= ~baEnum.PduConReqBit.SEGMENTED_MESSAGE
+
 			let apduHeaderLen = 3
 			if (
-				(type & baEnum.PDU_TYPE_MASK) ===
+				(msg.type & baEnum.PDU_TYPE_MASK) ===
 				baEnum.PduType.CONFIRMED_REQUEST
 			) {
 				apduHeaderLen = 4
 			}
-			const apdubuffer = this._getBuffer()
+
+			const apdubuffer: EncodeBuffer = this._getBuffer()
 			apdubuffer.offset = 0
 			buffer.copy(
 				apdubuffer.buffer,
@@ -222,95 +350,107 @@ export default class Client extends EventEmitter {
 				offset,
 				offset + length,
 			)
+
 			if (
-				(type & baEnum.PDU_TYPE_MASK) ===
+				(msg.type & baEnum.PDU_TYPE_MASK) ===
 				baEnum.PduType.CONFIRMED_REQUEST
 			) {
+				const confirmedMsg = msg as ConfirmedServiceRequest &
+					BACnetMessageBase
 				baApdu.encodeConfirmedServiceRequest(
 					apdubuffer,
-					type,
-					service,
-					maxSegments,
-					maxApdu,
-					invokeId,
+					msg.type,
+					confirmedMsg.service,
+					confirmedMsg.maxSegments,
+					confirmedMsg.maxApdu,
+					confirmedMsg.invokeId,
 					0,
 					0,
 				)
 			} else {
+				const complexMsg = msg as ComplexAck & BACnetMessageBase
 				baApdu.encodeComplexAck(
 					apdubuffer,
-					type,
-					service,
-					invokeId,
+					msg.type,
+					complexMsg.service,
+					complexMsg.invokeId,
 					0,
 					0,
 				)
 			}
+
 			this._segmentStore.push(
 				apdubuffer.buffer.slice(0, length + apduHeaderLen),
 			)
 		} else {
 			this._segmentStore.push(buffer.slice(offset, offset + length))
 		}
+
 		if (!moreFollows) {
 			const apduBuffer = Buffer.concat(this._segmentStore)
 			this._segmentStore = []
-			type &= ~baEnum.PduConReqBit.SEGMENTED_MESSAGE
-			this._handlePdu(adr, type, apduBuffer, 0, apduBuffer.length)
+			msg.type &= ~baEnum.PduConReqBit.SEGMENTED_MESSAGE
+			this._handlePdu(apduBuffer, 0, apduBuffer.length, msg.header)
 		}
 	}
 
+	/**
+	 *
+	 * @param msg
+	 * @param server
+	 * @param buffer
+	 * @param offset
+	 * @param length
+	 * @private
+	 */
 	private _processSegment(
-		receiver: string,
-		type: number,
-		service: number,
-		invokeId: number,
-		maxSegments: number,
-		maxApdu: number,
+		msg: SegmentableMessage &
+			(ConfirmedServiceRequestMessage | ComplexAckMessage),
 		server: boolean,
-		sequencenumber: number,
-		proposedWindowNumber: number,
 		buffer: Buffer,
 		offset: number,
 		length: number,
-	) {
+	): void {
 		let first = false
-		if (sequencenumber === 0 && this._lastSequenceNumber === 0) {
+
+		if (msg.sequencenumber === 0 && this._lastSequenceNumber === 0) {
 			first = true
-		} else if (sequencenumber !== this._lastSequenceNumber + 1) {
-			return this._segmentAckResponse(
-				receiver,
-				true,
-				server,
-				invokeId,
-				this._lastSequenceNumber,
-				proposedWindowNumber,
-			)
+		} else {
+			if (msg.sequencenumber !== this._lastSequenceNumber + 1) {
+				return this._segmentAckResponse(
+					msg.header.sender.address,
+					true,
+					server,
+					msg.invokeId,
+					this._lastSequenceNumber,
+					msg.proposedWindowNumber,
+				)
+			}
 		}
-		this._lastSequenceNumber = sequencenumber
-		const moreFollows = type & baEnum.PduConReqBit.MORE_FOLLOWS
+
+		this._lastSequenceNumber = msg.sequencenumber
+		const moreFollows = !!(msg.type & baEnum.PduConReqBit.MORE_FOLLOWS)
+
 		if (!moreFollows) {
 			this._lastSequenceNumber = 0
 		}
-		if (sequencenumber % proposedWindowNumber === 0 || !moreFollows) {
+
+		if (
+			msg.sequencenumber % msg.proposedWindowNumber === 0 ||
+			!moreFollows
+		) {
 			this._segmentAckResponse(
-				receiver,
+				msg.header.sender.address,
 				false,
 				server,
-				invokeId,
-				sequencenumber,
-				proposedWindowNumber,
+				msg.invokeId,
+				msg.sequencenumber,
+				msg.proposedWindowNumber,
 			)
 		}
+
 		this._performDefaultSegmentHandling(
-			this,
-			receiver,
-			type,
-			service,
-			invokeId,
-			maxSegments,
-			maxApdu,
-			sequencenumber,
+			msg,
 			first,
 			moreFollows,
 			buffer,
@@ -319,663 +459,405 @@ export default class Client extends EventEmitter {
 		)
 	}
 
-	private _processConfirmedServiceRequest(
-		address: string,
-		type: number,
-		service: number,
-		maxSegments: number,
-		maxApdu: number,
-		invokeId: number,
+	/**
+	 *
+	 * @param serviceMap
+	 * @param content
+	 * @param buffer
+	 * @param offset
+	 * @param length
+	 * @returns {*}
+	 * @private
+	 */
+	private _processServiceRequest(
+		serviceMap: Record<number, string>,
+		content: ServiceMessage,
 		buffer: Buffer,
 		offset: number,
 		length: number,
-	) {
-		debug('Handle this._processConfirmedServiceRequest')
-		if (service === baEnum.ConfirmedServiceChoice.READ_PROPERTY) {
-			const result = baServices.readProperty.decode(
-				buffer,
-				offset,
-				length,
+	): void {
+		const sender = content.header?.sender
+		if (sender?.address === LOCALHOST_INTERFACES_IPV4) {
+			debug(
+				'Received and skipped localhost service request:',
+				content.service,
 			)
-			if (!result) return debug('Received invalid readProperty message')
-			this.emit('readProperty', {
-				address,
-				invokeId,
-				request: result,
-			})
-		} else if (service === baEnum.ConfirmedServiceChoice.WRITE_PROPERTY) {
-			const result = baServices.writeProperty.decode(
-				buffer,
-				offset,
-				length,
-			)
-			if (!result) return debug('Received invalid writeProperty message')
-			this.emit('writeProperty', {
-				address,
-				invokeId,
-				request: result,
-			})
-		} else if (
-			service === baEnum.ConfirmedServiceChoice.READ_PROPERTY_MULTIPLE
-		) {
-			const result = baServices.readPropertyMultiple.decode(
-				buffer,
-				offset,
-				length,
-			)
-			if (!result)
-				return debug('Received invalid readPropertyMultiple message')
-			this.emit('readPropertyMultiple', {
-				address,
-				invokeId,
-				request: result,
-			})
-		} else if (
-			service === baEnum.ConfirmedServiceChoice.WRITE_PROPERTY_MULTIPLE
-		) {
-			const result = baServices.writePropertyMultiple.decode(
-				buffer,
-				offset,
-				length,
-			)
-			if (!result)
-				return debug('Received invalid writePropertyMultiple message')
-			this.emit('writePropertyMultiple', {
-				address,
-				invokeId,
-				request: result,
-			})
-		} else if (
-			service === baEnum.ConfirmedServiceChoice.CONFIRMED_COV_NOTIFICATION
-		) {
-			const result = baServices.covNotify.decode(buffer, offset, length)
-			if (!result) return debug('Received invalid covNotify message')
-			this.emit('covNotify', {
-				address,
-				invokeId,
-				request: result,
-			})
-		} else if (
-			service === baEnum.ConfirmedServiceChoice.ATOMIC_WRITE_FILE
-		) {
-			const result = baServices.atomicWriteFile.decode(
-				buffer,
-				offset,
-				length,
-			)
-			if (!result)
-				return debug('Received invalid atomicWriteFile message')
-			this.emit('atomicWriteFile', {
-				address,
-				invokeId,
-				request: result,
-			})
-		} else if (service === baEnum.ConfirmedServiceChoice.ATOMIC_READ_FILE) {
-			const result = baServices.atomicReadFile.decode(buffer, offset)
-			if (!result) return debug('Received invalid atomicReadFile message')
-			this.emit('atomicReadFile', {
-				address,
-				invokeId,
-				request: result,
-			})
-		} else if (service === baEnum.ConfirmedServiceChoice.SUBSCRIBE_COV) {
-			const result = baServices.subscribeCov.decode(
-				buffer,
-				offset,
-				length,
-			)
-			if (!result) return debug('Received invalid subscribeCOV message')
-			this.emit('subscribeCOV', {
-				address,
-				invokeId,
-				request: result,
-			})
-		} else if (
-			service === baEnum.ConfirmedServiceChoice.SUBSCRIBE_COV_PROPERTY
-		) {
-			const result = baServices.subscribeProperty.decode(buffer, offset)
-			if (!result)
-				return debug('Received invalid subscribeProperty message')
-			this.emit('subscribeProperty', {
-				address,
-				invokeId,
-				request: result,
-			})
-		} else if (
-			service ===
-			baEnum.ConfirmedServiceChoice.DEVICE_COMMUNICATION_CONTROL
-		) {
-			const result = baServices.deviceCommunicationControl.decode(
-				buffer,
-				offset,
-				length,
-			)
-			if (!result)
-				return debug(
-					'Received invalid deviceCommunicationControl message',
+			return
+		}
+
+		const name = serviceMap[content.service]
+		if (!name) {
+			debug('Received unsupported service request:', content.service)
+			return
+		}
+
+		// Use type assertion to access potential invokeId property
+		const confirmedMsg = content as Partial<ConfirmedServiceRequest> &
+			BACnetMessageBase
+		const id = confirmedMsg.invokeId ? '@' + confirmedMsg.invokeId : ''
+		trace(`Received service request${id}:`, name)
+
+		// Find a function to decode the packet.
+		const serviceHandler = baServices[name]
+		if (serviceHandler) {
+			try {
+				content.payload = serviceHandler.decode(buffer, offset, length)
+				trace(
+					`Handled service request${id}:`,
+					name,
+					JSON.stringify(content),
 				)
-			this.emit('deviceCommunicationControl', {
-				address,
-				invokeId,
-				request: result,
-			})
-		} else if (
-			service === baEnum.ConfirmedServiceChoice.REINITIALIZE_DEVICE
-		) {
-			const result = baServices.reinitializeDevice.decode(
-				buffer,
-				offset,
-				length,
-			)
-			if (!result)
-				return debug('Received invalid reinitializeDevice message')
-			this.emit('reinitializeDevice', {
-				address,
-				invokeId,
-				request: result,
-			})
-		} else if (
-			service ===
-			baEnum.ConfirmedServiceChoice.CONFIRMED_EVENT_NOTIFICATION
-		) {
-			const result = baServices.eventNotifyData.decode(buffer, offset)
-			if (!result)
-				return debug('Received invalid eventNotifyData message')
-			this.emit('eventNotifyData', {
-				address,
-				invokeId,
-				request: result,
-			})
-		} else if (service === baEnum.ConfirmedServiceChoice.READ_RANGE) {
-			const result = baServices.readRange.decode(buffer, offset, length)
-			if (!result) return debug('Received invalid readRange message')
-			this.emit('readRange', {
-				address,
-				invokeId,
-				request: result,
-			})
-		} else if (service === baEnum.ConfirmedServiceChoice.CREATE_OBJECT) {
-			const result = baServices.createObject.decode(
-				buffer,
-				offset,
-				length,
-			)
-			if (!result) return debug('Received invalid createObject message')
-			this.emit('createObject', {
-				address,
-				invokeId,
-				request: result,
-			})
-		} else if (service === baEnum.ConfirmedServiceChoice.DELETE_OBJECT) {
-			const result = baServices.deleteObject.decode(
-				buffer,
-				offset,
-				length,
-			)
-			if (!result) return debug('Received invalid deleteObject message')
-			this.emit('deleteObject', {
-				address,
-				invokeId,
-				request: result,
-			})
-		} else if (
-			service === baEnum.ConfirmedServiceChoice.ACKNOWLEDGE_ALARM
-		) {
-			const result = baServices.alarmAcknowledge.decode(
-				buffer,
-				offset,
-				length,
-			)
-			if (!result)
-				return debug('Received invalid alarmAcknowledge message')
-			this.emit('alarmAcknowledge', {
-				address,
-				invokeId,
-				request: result,
-			})
-		} else if (
-			service === baEnum.ConfirmedServiceChoice.GET_ALARM_SUMMARY
-		) {
-			this.emit('getAlarmSummary', {
-				address,
-				invokeId,
-			})
-		} else if (
-			service === baEnum.ConfirmedServiceChoice.GET_ENROLLMENT_SUMMARY
-		) {
-			const result = baServices.getEnrollmentSummary.decode(
-				buffer,
-				offset,
-			)
-			if (!result)
-				return debug('Received invalid getEntrollmentSummary message')
-			this.emit('getEntrollmentSummary', {
-				address,
-				invokeId,
-				request: result,
-			})
-		} else if (
-			service === baEnum.ConfirmedServiceChoice.GET_EVENT_INFORMATION
-		) {
-			const result = baServices.getEventInformation.decode(buffer, offset)
-			if (!result)
-				return debug('Received invalid getEventInformation message')
-			this.emit('getEventInformation', {
-				address,
-				invokeId,
-				request: result,
-			})
-		} else if (
-			service === baEnum.ConfirmedServiceChoice.LIFE_SAFETY_OPERATION
-		) {
-			const result = baServices.lifeSafetyOperation.decode(
-				buffer,
-				offset,
-				length,
-			)
-			if (!result)
-				return debug('Received invalid lifeSafetyOperation message')
-			this.emit('lifeSafetyOperation', {
-				address,
-				invokeId,
-				request: result,
-			})
-		} else if (service === baEnum.ConfirmedServiceChoice.ADD_LIST_ELEMENT) {
-			const result = baServices.addListElement.decode(
-				buffer,
-				offset,
-				length,
-			)
-			if (!result) return debug('Received invalid addListElement message')
-			this.emit('addListElement', {
-				address,
-				invokeId,
-				request: result,
-			})
-		} else if (
-			service === baEnum.ConfirmedServiceChoice.REMOVE_LIST_ELEMENT
-		) {
-			const result = baServices.addListElement.decode(
-				buffer,
-				offset,
-				length,
-			)
-			if (!result)
-				return debug('Received invalid removeListElement message')
-			this.emit('removeListElement', {
-				address,
-				invokeId,
-				request: result,
-			})
-		} else if (
-			service === baEnum.ConfirmedServiceChoice.CONFIRMED_PRIVATE_TRANSFER
-		) {
-			const result = baServices.privateTransfer.decode(
-				buffer,
-				offset,
-				length,
-			)
-			if (!result)
-				return debug('Received invalid privateTransfer message')
-			this.emit('privateTransfer', {
-				address,
-				invokeId,
-				request: result,
-			})
+			} catch (e) {
+				// Sometimes incomplete or corrupted messages will cause exceptions
+				// during decoding, but we don't want these to terminate the program, so
+				// we'll just log them and ignore them.
+				debug('Exception thrown when processing message:', e)
+				debug('Original message was', name + ':', content)
+				return
+			}
+			if (!content.payload) {
+				return debug('Received invalid', name, 'message')
+			}
 		} else {
-			debug('Received unsupported confirmed service request')
+			debug('No serviceHandler defined for:', name)
+			// Call the callback anyway, just with no payload.
+		}
+
+		// Call the user code, if they've defined a callback.
+		if (this.listenerCount(name)) {
+			trace('listener count by name emits ' + name + ' with content')
+			this.emit(name, content)
+		} else {
+			if (this.listenerCount('unhandledEvent')) {
+				trace('unhandled event emiting with content')
+				this.emit('unhandledEvent', content)
+			} else {
+				// No 'unhandled event' handler, so respond with an error ourselves.
+				// This is better than doing nothing, which can often make the other
+				// device think we have gone offline.
+				trace(
+					'no unhandled event handler with header: ' +
+						JSON.stringify(content.header),
+				)
+				if (content.header?.expectingReply) {
+					debug('Replying with error for unhandled service:', name)
+					// Make sure we don't reply pretending to be the caller, if we got a
+					// forwarded message!  Really this should be overridden to be your
+					// own IP, but only if it's not null/undefined to begin with.
+					if (content.header.sender) {
+						content.header.sender.forwardedFrom = null
+					}
+					this.errorResponse(
+						content.header.sender,
+						content.service,
+						confirmedMsg.invokeId,
+						baEnum.ErrorClass.SERVICES,
+						baEnum.ErrorCode.REJECT_UNRECOGNIZED_SERVICE,
+					)
+				}
+			}
 		}
 	}
 
-	private _processUnconfirmedServiceRequest(
-		address: string,
-		type: number,
-		service: number,
-		buffer: Buffer,
-		offset: number,
-		length: number,
-	) {
-		debug('Handle this._processUnconfirmedServiceRequest')
-		if (service === baEnum.UnconfirmedServiceChoice.I_AM) {
-			const result = baServices.iAmBroadcast.decode(buffer, offset)
-			if (!result) return debug('Received invalid iAm message')
-
-			/**
-			 * The iAm event represents the response to a whoIs request to detect all devices in a BACNET network.
-			 * @event bacstack.iAm
-			 * @param {object} device - An object representing the detected device.
-			 * @param {string} device.address - The IP address of the detected device.
-			 * @param {number} device.deviceId - The BACNET device-id of the detected device.
-			 * @param {number} device.maxApdu - The max APDU size the detected device is supporting.
-			 * @param {number} device.segmentation - The type of segmentation the detected device is supporting.
-			 * @param {number} device.vendorId - The BACNET vendor-id of the detected device.
-			 * @example
-			 * const bacnet = require('bacstack');
-			 * const client = new bacnet();
-			 *
-			 * client.on('iAm', (device) => {
-			 *   console.log('address: ', device.address, ' - deviceId: ', device.deviceId, ' - maxApdu: ', device.maxApdu, ' - segmentation: ', device.segmentation, ' - vendorId: ', device.vendorId);
-			 * });
-			 */
-			this.emit('iAm', {
-				address,
-				deviceId: result.deviceId,
-				maxApdu: result.maxApdu,
-				segmentation: result.segmentation,
-				vendorId: result.vendorId,
-			})
-		} else if (service === baEnum.UnconfirmedServiceChoice.WHO_IS) {
-			const result = baServices.whoIs.decode(buffer, offset, length)
-			if (!result) return debug('Received invalid WhoIs message')
-
-			/**
-			 * The whoIs event represents the request for an IAm reponse to detect all devices in a BACNET network.
-			 * @event bacstack.whoIs
-			 * @param {object} request - An object representing the received request.
-			 * @param {string} request.address - The IP address of the device sending the request.
-			 * @param {number=} request.lowLimit - The lower limit of the BACNET device-id.
-			 * @param {number=} request.highLimit - The higher limit of the BACNET device-id.
-			 * @example
-			 * const bacnet = require('bacstack');
-			 * const client = new bacnet();
-			 *
-			 * client.on('whoIs', (request) => {
-			 *   console.log('address: ', device.address, ' - lowLimit: ', device.lowLimit, ' - highLimit: ', device.highLimit);
-			 * });
-			 */
-			this.emit('whoIs', {
-				address,
-				lowLimit: result.lowLimit,
-				highLimit: result.highLimit,
-			})
-		} else if (service === baEnum.UnconfirmedServiceChoice.WHO_HAS) {
-			const result = baServices.whoHas.decode(buffer, offset, length)
-			if (!result) return debug('Received invalid WhoHas message')
-			this.emit('whoHas', {
-				address,
-				lowLimit: result.lowLimit,
-				highLimit: result.highLimit,
-				objectId: result.objectId,
-				objectName: result.objectName,
-			})
-		} else if (
-			service ===
-			baEnum.UnconfirmedServiceChoice.UNCONFIRMED_COV_NOTIFICATION
-		) {
-			const result = baServices.covNotify.decode(buffer, offset, length)
-			if (!result)
-				return debug('Received invalid covNotifyUnconfirmed message')
-			this.emit('covNotifyUnconfirmed', {
-				address,
-				request: result,
-			})
-		} else if (
-			service === baEnum.UnconfirmedServiceChoice.TIME_SYNCHRONIZATION
-		) {
-			const result = baServices.timeSync.decode(buffer, offset)
-			if (!result) return debug('Received invalid TimeSync message')
-
-			/**
-			 * The timeSync event represents the request to synchronize the local time to the received time.
-			 * @event bacstack.timeSync
-			 * @param {object} request - An object representing the received request.
-			 * @param {string} request.address - The IP address of the device sending the request.
-			 * @param {date} request.dateTime - The time to be synchronized to.
-			 * @example
-			 * const bacnet = require('bacstack');
-			 * const client = new bacnet();
-			 *
-			 * client.on('timeSync', (request) => {
-			 *   console.log('address: ', request.address, ' - dateTime: ', request.dateTime);
-			 * });
-			 */
-			this.emit('timeSync', { address, dateTime: result.value })
-		} else if (
-			service === baEnum.UnconfirmedServiceChoice.UTC_TIME_SYNCHRONIZATION
-		) {
-			const result = baServices.timeSync.decode(buffer, offset)
-			if (!result) return debug('Received invalid TimeSyncUTC message')
-
-			/**
-			 * The timeSyncUTC event represents the request to synchronize the local time to the received UTC time.
-			 * @event bacstack.timeSyncUTC
-			 * @param {object} request - An object representing the received request.
-			 * @param {string} request.address - The IP address of the device sending the request.
-			 * @param {date} request.dateTime - The time to be synchronized to.
-			 * @example
-			 * const bacnet = require('bacstack');
-			 * const client = new bacnet();
-			 *
-			 * client.on('timeSyncUTC', (request) => {
-			 *   console.log('address: ', request.address, ' - dateTime: ', request.dateTime);
-			 * });
-			 */
-			this.emit('timeSyncUTC', {
-				address,
-				dateTime: result.value,
-			})
-		} else if (
-			service ===
-			baEnum.UnconfirmedServiceChoice.UNCONFIRMED_EVENT_NOTIFICATION
-		) {
-			const result = baServices.eventNotifyData.decode(buffer, offset)
-			if (!result) return debug('Received invalid EventNotify message')
-			this.emit('eventNotify', {
-				address,
-				eventData: result.eventData,
-			})
-		} else if (service === baEnum.UnconfirmedServiceChoice.I_HAVE) {
-			const result = baServices.iHaveBroadcast.decode(
-				buffer,
-				offset,
-				length,
-			)
-			if (!result) return debug('Received invalid ihaveBroadcast message')
-			this.emit('ihaveBroadcast', {
-				address,
-				eventData: result.eventData,
-			})
-		} else if (
-			service ===
-			baEnum.UnconfirmedServiceChoice.UNCONFIRMED_PRIVATE_TRANSFER
-		) {
-			const result = baServices.privateTransfer.decode(
-				buffer,
-				offset,
-				length,
-			)
-			if (!result)
-				return debug('Received invalid privateTransfer message')
-			this.emit('privateTransfer', {
-				address,
-				eventData: result.eventData,
-			})
-		} else {
-			debug('Received unsupported unconfirmed service request')
-		}
-	}
-
+	/**
+	 * @param buffer
+	 * @param offset
+	 * @param length
+	 * @param header
+	 * @private
+	 */
 	private _handlePdu(
-		address: string,
-		type: number,
 		buffer: Buffer,
 		offset: number,
 		length: number,
-	) {
+		header: BACnetMessageHeader,
+	): void {
+		let msg: BACnetMessage
+		trace('handlePdu Header: ', header)
+
 		// Handle different PDU types
-		switch (type & baEnum.PDU_TYPE_MASK) {
-			case baEnum.PduType.UNCONFIRMED_REQUEST: {
-				const result = baApdu.decodeUnconfirmedServiceRequest(
+		switch (header.apduType & baEnum.PDU_TYPE_MASK) {
+			case baEnum.PduType.UNCONFIRMED_REQUEST:
+				msg = baApdu.decodeUnconfirmedServiceRequest(
 					buffer,
 					offset,
-				)
-				this._processUnconfirmedServiceRequest(
-					address,
-					result.type,
-					result.service,
+				) as UnconfirmedServiceRequest & BACnetMessageBase
+				msg.header = header
+				msg.header.confirmedService = false
+				this._processServiceRequest(
+					unconfirmedServiceMap,
+					msg,
 					buffer,
-					offset + result.len,
-					length - result.len,
+					offset + msg.len,
+					length - msg.len,
 				)
 				break
-			}
-			case baEnum.PduType.SIMPLE_ACK: {
-				const result = baApdu.decodeSimpleAck(buffer, offset)
-				offset += result.len
-				length -= result.len
-				this._invokeCallback(result.invokeId, null, {
-					result,
-					buffer,
-					offset: offset + result.len,
-					length: length - result.len,
+
+			case baEnum.PduType.SIMPLE_ACK:
+				msg = baApdu.decodeSimpleAck(buffer, offset) as SimpleAck &
+					BACnetMessageBase &
+					HasInvokeId
+				offset += msg.len
+				length -= msg.len
+				this._invokeCallback((msg as HasInvokeId).invokeId, null, {
+					msg: msg,
+					buffer: buffer,
+					offset: offset + msg.len,
+					length: length - msg.len,
 				})
 				break
-			}
-			case baEnum.PduType.COMPLEX_ACK: {
-				const result = baApdu.decodeComplexAck(buffer, offset)
-				if ((type & baEnum.PduConReqBit.SEGMENTED_MESSAGE) === 0) {
-					this._invokeCallback(result.invokeId, null, {
-						result,
-						buffer,
-						offset: offset + result.len,
-						length: length - result.len,
+
+			case baEnum.PduType.COMPLEX_ACK:
+				msg = baApdu.decodeComplexAck(
+					buffer,
+					offset,
+				) as ComplexAckMessage
+				msg.header = header
+				if (
+					(header.apduType &
+						baEnum.PduConReqBit.SEGMENTED_MESSAGE) ===
+					0
+				) {
+					this._invokeCallback((msg as HasInvokeId).invokeId, null, {
+						msg: msg,
+						buffer: buffer,
+						offset: offset + msg.len,
+						length: length - msg.len,
 					})
 				} else {
 					this._processSegment(
-						address,
-						result.type,
-						result.service,
-						result.invokeId,
-						baEnum.MaxSegmentsAccepted.SEGMENTS_0,
-						baEnum.MaxApduLengthAccepted.OCTETS_50,
-						false,
-						result.sequencenumber,
-						result.proposedWindowNumber,
+						msg as SegmentableMessage &
+							(
+								| ConfirmedServiceRequestMessage
+								| ComplexAckMessage
+							),
+						true,
 						buffer,
-						offset + result.len,
-						length - result.len,
+						offset + msg.len,
+						length - msg.len,
 					)
 				}
 				break
-			}
-			case baEnum.PduType.SEGMENT_ACK: {
-				// FIXME: Segment ACK handling
-				// const result = baApdu.decodeSegmentAck(buffer, offset);
-				// m_last_segment_ack.Set(address, result.originalInvokeId, result.sequencenumber, result.actualWindowSize);
-				// this._processSegmentAck(address, result.type, result.originalInvokeId, result.sequencenumber, result.actualWindowSize, buffer, offset + result.len, length - result.len);
-				break
-			}
-			case baEnum.PduType.ERROR: {
-				const result = baApdu.decodeError(buffer, offset)
-				this._processError(
-					result.invokeId,
+
+			case baEnum.PduType.SEGMENT_ACK:
+				msg = baApdu.decodeSegmentAck(buffer, offset) as SegmentAck &
+					BACnetMessageBase
+				msg.header = header
+				this._processSegment(
+					msg as unknown as (ConfirmedServiceRequest | ComplexAck) &
+						BACnetMessageBase,
+					true,
 					buffer,
-					offset + result.len,
-					length - result.len,
+					offset + msg.len,
+					length - msg.len,
 				)
 				break
-			}
-			case baEnum.PduType.REJECT:
-			case baEnum.PduType.ABORT: {
-				const result = baApdu.decodeAbort(buffer, offset)
-				this._processAbort(result.invokeId, result.reason)
+
+			case baEnum.PduType.ERROR:
+				msg = baApdu.decodeError(buffer, offset) as BACnetError &
+					BACnetMessageBase
+				this._invokeCallback((msg as HasInvokeId).invokeId, null, {
+					msg: msg,
+					buffer: buffer,
+					offset: offset + msg.len,
+					length: length - msg.len,
+				})
 				break
-			}
+
+			case baEnum.PduType.REJECT:
+			case baEnum.PduType.ABORT:
+				msg = baApdu.decodeAbort(buffer, offset) as Abort &
+					BACnetMessageBase
+				this._processAbort(msg.invokeId, msg.reason)
+				break
+
 			case baEnum.PduType.CONFIRMED_REQUEST:
-				{
-					const result = baApdu.decodeConfirmedServiceRequest(
+				msg = baApdu.decodeConfirmedServiceRequest(
+					buffer,
+					offset,
+				) as ConfirmedServiceRequest & BACnetMessageBase
+				msg.header = header
+				msg.header.confirmedService = true
+				if (
+					(header.apduType &
+						baEnum.PduConReqBit.SEGMENTED_MESSAGE) ===
+					0
+				) {
+					this._processServiceRequest(
+						confirmedServiceMap,
+						msg,
 						buffer,
-						offset,
+						offset + msg.len,
+						length - msg.len,
 					)
-					if ((type & baEnum.PduConReqBit.SEGMENTED_MESSAGE) === 0) {
-						this._processConfirmedServiceRequest(
-							address,
-							result.type,
-							result.service,
-							result.maxSegments,
-							result.maxApdu,
-							result.invokeId,
-							buffer,
-							offset + result.len,
-							length - result.len,
-						)
-					} else {
-						this._processSegment(
-							address,
-							result.type,
-							result.service,
-							result.invokeId,
-							result.maxSegments,
-							result.maxApdu,
-							true,
-							result.sequencenumber,
-							result.proposedWindowNumber,
-							buffer,
-							offset + result.len,
-							length - result.len,
-						)
-					}
+				} else {
+					this._processSegment(
+						msg as SegmentableMessage &
+							(
+								| ConfirmedServiceRequestMessage
+								| ComplexAckMessage
+							),
+						true,
+						buffer,
+						offset + msg.len,
+						length - msg.len,
+					)
 				}
 				break
+
 			default:
-				debug('Received unknown PDU type -> Drop package')
+				debug(
+					`Received unknown PDU type ${header.apduType} -> Drop packet`,
+				)
 				break
 		}
 	}
 
+	/**
+	 * @param buffer
+	 * @param offset
+	 * @param msgLength
+	 * @param header
+	 * @returns {void}
+	 * @private
+	 */
 	private _handleNpdu(
 		buffer: Buffer,
 		offset: number,
 		msgLength: number,
-		remoteAddress: string,
-	) {
+		header: BACnetMessageHeader,
+	): void {
 		// Check data length
-		if (msgLength <= 0) return debug('No NPDU data -> Drop package')
+		if (msgLength <= 0) {
+			return trace('No NPDU data -> Drop package')
+		}
+
 		// Parse baNpdu header
 		const result = baNpdu.decode(buffer, offset)
-		if (!result)
-			return debug('Received invalid NPDU header -> Drop package')
-		if (result.funct & baEnum.NpduControlBits.NETWORK_LAYER_MESSAGE) {
-			return debug('Received network layer message -> Drop package')
+		if (!result) {
+			return trace('Received invalid NPDU header -> Drop package')
 		}
+
+		if (result.funct & baEnum.NpduControlBit.NETWORK_LAYER_MESSAGE) {
+			return trace('Received network layer message -> Drop package')
+		}
+
 		offset += result.len
 		msgLength -= result.len
-		if (msgLength <= 0) return debug('No APDU data -> Drop package')
-		const apduType = baApdu.getDecodedType(buffer, offset)
-		this._handlePdu(remoteAddress, apduType, buffer, offset, msgLength)
+
+		if (msgLength <= 0) {
+			return trace('No APDU data -> Drop package')
+		}
+
+		header.apduType = baApdu.getDecodedType(buffer, offset)
+		header.expectingReply = !!(
+			result.funct & baEnum.NpduControlBit.EXPECTING_REPLY
+		)
+
+		this._handlePdu(buffer, offset, msgLength, header)
 	}
 
-	private _receiveData(buffer: Buffer, remoteAddress: string) {
+	/**
+	 * @param buffer
+	 * @param remoteAddress
+	 * @returns {void}
+	 * @private
+	 */
+	private _receiveData(buffer: Buffer, remoteAddress: string): void {
 		// Check data length
-		if (buffer.length < baEnum.BVLC_HEADER_LENGTH)
-			return debug('Received invalid data -> Drop package')
+		if (buffer.length < baEnum.BVLC_HEADER_LENGTH) {
+			return trace('Received invalid data -> Drop package')
+		}
+
 		// Parse BVLC header
 		const result = baBvlc.decode(buffer, 0)
-		if (!result)
-			return debug('Received invalid BVLC header -> Drop package')
+		if (!result) {
+			return trace('Received invalid BVLC header -> Drop package')
+		}
+
+		const header: BACnetMessageHeader = {
+			// Which function the packet came in on, so later code can distinguish
+			// between ORIGINAL_BROADCAST_NPDU and DISTRIBUTE_BROADCAST_TO_NETWORK.
+			func: result.func,
+			sender: {
+				// Address of the host we are directly connected to. String, IP:port.
+				address: remoteAddress,
+				// If the host is a BBMD passing messages along to another node, this
+				// is the address of the distant BACnet node. String, IP:port.
+				// Typically we won't have network connectivity to this address, but
+				// we have to include it in replies so the host we are connect to knows
+				// where to forward the messages.
+				forwardedFrom: null,
+			},
+			apduType: 0,
+			expectingReply: false,
+		}
 		// Check BVLC function
-		if (
-			result.func === baEnum.BvlcResultPurpose.ORIGINAL_UNICAST_NPDU ||
-			result.func === baEnum.BvlcResultPurpose.ORIGINAL_BROADCAST_NPDU ||
-			result.func === baEnum.BvlcResultPurpose.FORWARDED_NPDU
-		) {
-			this._handleNpdu(
-				buffer,
-				result.len,
-				buffer.length - result.len,
-				remoteAddress,
-			)
-		} else {
-			debug('Received unknown BVLC function -> Drop package')
+		switch (result.func) {
+			case baEnum.BvlcResultPurpose.ORIGINAL_UNICAST_NPDU:
+			case baEnum.BvlcResultPurpose.ORIGINAL_BROADCAST_NPDU:
+				this._handleNpdu(
+					buffer,
+					result.len,
+					buffer.length - result.len,
+					header,
+				)
+				break
+
+			case baEnum.BvlcResultPurpose.FORWARDED_NPDU:
+				// Preserve the IP of the node behind the BBMD so we know where to send
+				// replies back to.
+				header.sender.forwardedFrom = result.originatingIP
+				this._handleNpdu(
+					buffer,
+					result.len,
+					buffer.length - result.len,
+					header,
+				)
+				break
+
+			case baEnum.BvlcResultPurpose.REGISTER_FOREIGN_DEVICE:
+				const decodeResult = baServices.registerForeignDevice.decode(
+					buffer,
+					result.len,
+					buffer.length - result.len,
+				)
+				if (!decodeResult) {
+					return trace(
+						'Received invalid registerForeignDevice message',
+					)
+				}
+				this.emit('registerForeignDevice', {
+					header: header,
+					payload: decodeResult,
+				})
+				break
+
+			case baEnum.BvlcResultPurpose.DISTRIBUTE_BROADCAST_TO_NETWORK:
+				this._handleNpdu(
+					buffer,
+					result.len,
+					buffer.length - result.len,
+					header,
+				)
+				break
+
+			default:
+				debug(
+					'Received unknown BVLC function ' +
+						result.func +
+						' -> Drop package',
+				)
+				break
 		}
 	}
 
 	private _receiveError(err: Error) {
 		/**
-		 * @event bacstack.error
+		 * @event bacnet.error
 		 * @param {error} err - The error object thrown by the underlying transport layer.
 		 * @example
-		 * const bacnet = require('bacstack');
+		 * const bacnet = require('node-bacnet');
 		 * const client = new bacnet();
 		 *
 		 * client.on('error', (err) => {
@@ -988,66 +870,84 @@ export default class Client extends EventEmitter {
 
 	/**
 	 * The whoIs command discovers all BACNET devices in a network.
-	 * @function bacstack.whoIs
-	 * @param {object=} options
-	 * @param {number=} options.lowLimit - Minimal device instance number to search for.
-	 * @param {number=} options.highLimit - Maximal device instance number to search for.
-	 * @param {string=} options.address - Unicast address if command should address a device directly.
-	 * @fires bacstack.iAm
-	 * @example
-	 * const bacnet = require('bacstack');
-	 * const client = new bacnet();
-	 *
-	 * client.whoIs();
+	 * @param receiver - IP address of the target device or address object
+	 * @param options - Options for the who-is request (low/high limit)
+	 * @fires bacnet.iAm
 	 */
-	whoIs(options?: WhoIsOptions) {
+	public whoIs(
+		receiver?:
+			| {
+					address?: string
+					forwardedFrom?: string
+					lowLimit?: number
+					highLimit?: number
+			  }
+			| string,
+		options?: WhoIsOptions,
+	): void {
+		if (!options) {
+			if (
+				receiver &&
+				typeof receiver === 'object' &&
+				receiver.address === undefined &&
+				receiver.forwardedFrom === undefined &&
+				(receiver.lowLimit !== undefined ||
+					receiver.highLimit !== undefined)
+			) {
+				// receiver seems to be an options object
+				options = receiver as WhoIsOptions
+				receiver = undefined
+			}
+		}
 		options = options || {}
+
 		const settings = {
 			lowLimit: options.lowLimit,
 			highLimit: options.highLimit,
-			address: options.address || this._transport.getBroadcastAddress(),
 		}
-		const buffer = this._getBuffer()
+
+		const buffer = this._getBuffer(
+			receiver && typeof receiver === 'object'
+				? receiver.forwardedFrom
+				: undefined,
+		)
+
 		baNpdu.encode(
 			buffer,
 			baEnum.NpduControlPriority.NORMAL_MESSAGE,
-			this._settings.interface,
+			receiver,
 			null,
 			DEFAULT_HOP_COUNT,
 			baEnum.NetworkLayerMessageType.WHO_IS_ROUTER_TO_NETWORK,
 			0,
 		)
+
 		baApdu.encodeUnconfirmedServiceRequest(
 			buffer,
 			baEnum.PduType.UNCONFIRMED_REQUEST,
 			baEnum.UnconfirmedServiceChoice.WHO_IS,
 		)
+
 		baServices.whoIs.encode(buffer, settings.lowLimit, settings.highLimit)
-		const npduType =
-			this._settings.interface !== this._transport.getBroadcastAddress()
-				? baEnum.BvlcResultPurpose.ORIGINAL_UNICAST_NPDU
-				: baEnum.BvlcResultPurpose.ORIGINAL_BROADCAST_NPDU
-		baBvlc.encode(buffer.buffer, npduType, buffer.offset)
-		this._transport.send(buffer.buffer, buffer.offset, settings.address)
+		this.sendBvlc(receiver, buffer)
 	}
 
 	/**
 	 * The timeSync command sets the time of a target device.
-	 * @function bacstack.timeSync
-	 * @param {string} address - IP address of the target device.
-	 * @param {date} dateTime - The date and time to set on the target device.
-	 * @example
-	 * const bacnet = require('bacstack');
-	 * const client = new bacnet();
-	 *
-	 * client.timeSync('192.168.1.43', new Date());
+	 * @param receiver - IP address or sender object of the target device
+	 * @param dateTime - The date and time to set on the target device
 	 */
-	timeSync(address: string, dateTime: Date) {
-		const buffer = this._getBuffer()
+	timeSync(
+		receiver: string | { address: string; forwardedFrom?: string },
+		dateTime: Date,
+	): void {
+		const buffer: EncodeBuffer = this._getBuffer(
+			receiver && typeof receiver !== 'string' && receiver.forwardedFrom,
+		)
 		baNpdu.encode(
 			buffer,
 			baEnum.NpduControlPriority.NORMAL_MESSAGE,
-			address,
+			receiver,
 		)
 		baApdu.encodeUnconfirmedServiceRequest(
 			buffer,
@@ -1055,31 +955,25 @@ export default class Client extends EventEmitter {
 			baEnum.UnconfirmedServiceChoice.TIME_SYNCHRONIZATION,
 		)
 		baServices.timeSync.encode(buffer, dateTime)
-		const npduType =
-			address !== this._transport.getBroadcastAddress()
-				? baEnum.BvlcResultPurpose.ORIGINAL_UNICAST_NPDU
-				: baEnum.BvlcResultPurpose.ORIGINAL_BROADCAST_NPDU
-		baBvlc.encode(buffer.buffer, npduType, buffer.offset)
-		this._transport.send(buffer.buffer, buffer.offset, address)
+		this.sendBvlc(receiver, buffer)
 	}
 
 	/**
 	 * The timeSyncUTC command sets the UTC time of a target device.
-	 * @function bacstack.timeSyncUTC
-	 * @param {string} address - IP address of the target device.
-	 * @param {date} dateTime - The date and time to set on the target device.
-	 * @example
-	 * const bacnet = require('bacstack');
-	 * const client = new bacnet();
-	 *
-	 * client.timeSyncUTC('192.168.1.43', new Date());
+	 * @param receiver - IP address or sender object of the target device
+	 * @param dateTime - The date and time to set on the target device
 	 */
-	timeSyncUTC(address: string, dateTime: Date) {
-		const buffer = this._getBuffer()
+	timeSyncUTC(
+		receiver: string | { address: string; forwardedFrom?: string },
+		dateTime: Date,
+	): void {
+		const buffer: EncodeBuffer = this._getBuffer(
+			receiver && typeof receiver !== 'string' && receiver.forwardedFrom,
+		)
 		baNpdu.encode(
 			buffer,
 			baEnum.NpduControlPriority.NORMAL_MESSAGE,
-			address,
+			receiver,
 		)
 		baApdu.encodeUnconfirmedServiceRequest(
 			buffer,
@@ -1087,89 +981,55 @@ export default class Client extends EventEmitter {
 			baEnum.UnconfirmedServiceChoice.UTC_TIME_SYNCHRONIZATION,
 		)
 		baServices.timeSync.encode(buffer, dateTime)
-		const npduType =
-			address !== this._transport.getBroadcastAddress()
-				? baEnum.BvlcResultPurpose.ORIGINAL_UNICAST_NPDU
-				: baEnum.BvlcResultPurpose.ORIGINAL_BROADCAST_NPDU
-		baBvlc.encode(buffer.buffer, npduType, buffer.offset)
-		this._transport.send(buffer.buffer, buffer.offset, address)
+		this.sendBvlc(receiver, buffer)
 	}
 
 	/**
 	 * The readProperty command reads a single property of an object from a device.
-	 * @function bacstack.readProperty
-	 * @param {string} address - IP address of the target device.
-	 * @param {object} objectId - The BACNET object ID to read.
-	 * @param {number} objectId.type - The BACNET object type to read.
-	 * @param {number} objectId.instance - The BACNET object instance to read.
-	 * @param {number} propertyId - The BACNET property id in the specified object to read.
-	 * @param {object=} options
-	 * @param {MaxSegmentsAccepted=} options.maxSegments - The maximimal allowed number of segments.
-	 * @param {MaxApduLengthAccepted=} options.maxApdu - The maximal allowed APDU size.
-	 * @param {number=} options.invokeId - The invoke ID of the confirmed service telegram.
-	 * @param {number=} options.arrayIndex - The array index of the property to be read.
-	 * @param {function} next - The callback containing an error, in case of a failure and value object in case of success.
-	 * @example
-	 * const bacnet = require('bacstack');
-	 * const client = new bacnet();
-	 *
-	 * client.readProperty('192.168.1.43', {type: 8, instance: 44301}, 28, (err, value) => {
-	 *   console.log('value: ', value);
-	 * });
+	 * @param receiver - IP address or sender object of the target device
+	 * @param objectId - The BACNET object ID to read
+	 * @param propertyId - The BACNET property id in the specified object to read
+	 * @param options - Options for the read operation
+	 * @param next - The callback containing an error, in case of a failure and value object in case of success
 	 */
 	readProperty(
-		address: string,
+		receiver: string | { address: string; forwardedFrom?: string },
 		objectId: BACNetObjectID,
 		propertyId: number,
-		callback: DataCallback<DecodeAcknowledgeSingleResult>,
-	): void
-	readProperty(
-		address: string,
-		objectId: BACNetObjectID,
-		propertyId: number,
-		options: ReadPropertyOptions,
-		callback: DataCallback<DecodeAcknowledgeSingleResult>,
-	): void
-	readProperty(
-		address: string,
-		objectId: BACNetObjectID,
-		propertyId: number,
-		optionsOrCallback:
-			| ReadPropertyOptions
-			| DataCallback<DecodeAcknowledgeSingleResult>,
-		callback?: DataCallback<DecodeAcknowledgeSingleResult>,
+		options: ReadPropertyOptions | DataCallback<any>,
+		next?: DataCallback<any>,
 	): void {
-		if (typeof optionsOrCallback !== 'function' && !callback) {
-			throw new Error('A callback function must be provided')
-		}
-
-		const next: DataCallback<DecodeAcknowledgeSingleResult> =
-			typeof optionsOrCallback === 'function'
-				? optionsOrCallback
-				: callback
-
-		const options: ReadPropertyOptions =
-			typeof optionsOrCallback === 'function' ? {} : optionsOrCallback
-
-		const settings = {
+		next = next || (options as DataCallback<any>)
+		const settings: ReadPropertyOptions = {
 			maxSegments:
-				options.maxSegments || baEnum.MaxSegmentsAccepted.SEGMENTS_65,
+				(options as ReadPropertyOptions).maxSegments ||
+				baEnum.MaxSegmentsAccepted.SEGMENTS_65,
 			maxApdu:
-				options.maxApdu || baEnum.MaxApduLengthAccepted.OCTETS_1476,
-			invokeId: options.invokeId || this._getInvokeId(),
-			arrayIndex: options.arrayIndex || baEnum.ASN1_ARRAY_ALL,
+				(options as ReadPropertyOptions).maxApdu ||
+				baEnum.MaxApduLengthAccepted.OCTETS_1476,
+			invokeId:
+				(options as ReadPropertyOptions).invokeId ||
+				this._getInvokeId(),
+			arrayIndex:
+				(options as ReadPropertyOptions).arrayIndex !== undefined
+					? (options as ReadPropertyOptions).arrayIndex
+					: baEnum.ASN1_ARRAY_ALL,
 		}
-		const buffer = this._getBuffer()
+
+		const buffer: EncodeBuffer = this._getBuffer(
+			receiver && typeof receiver !== 'string' && receiver.forwardedFrom,
+		)
 		baNpdu.encode(
 			buffer,
 			baEnum.NpduControlPriority.NORMAL_MESSAGE |
-				baEnum.NpduControlBits.EXPECTING_REPLY,
-			address,
+				baEnum.NpduControlBit.EXPECTING_REPLY,
+			receiver,
 			null,
 			DEFAULT_HOP_COUNT,
 			baEnum.NetworkLayerMessageType.WHO_IS_ROUTER_TO_NETWORK,
 			0,
 		)
+
 		const type =
 			baEnum.PduType.CONFIRMED_REQUEST |
 			(settings.maxSegments !== baEnum.MaxSegmentsAccepted.SEGMENTS_0
@@ -1185,6 +1045,7 @@ export default class Client extends EventEmitter {
 			0,
 			0,
 		)
+
 		baServices.readProperty.encode(
 			buffer,
 			objectId.type,
@@ -1192,107 +1053,78 @@ export default class Client extends EventEmitter {
 			propertyId,
 			settings.arrayIndex,
 		)
-		baBvlc.encode(
-			buffer.buffer,
-			baEnum.BvlcResultPurpose.ORIGINAL_UNICAST_NPDU,
-			buffer.offset,
-		)
-		this._transport.send(buffer.buffer, buffer.offset, address)
+		this.sendBvlc(receiver, buffer)
+
 		this._addCallback(settings.invokeId, (err, data) => {
-			if (err) return next(err)
+			if (err) {
+				return void (next as DataCallback<any>)(err)
+			}
+
 			const result = baServices.readProperty.decodeAcknowledge(
 				data.buffer,
 				data.offset,
 				data.length,
 			)
-			if (!result) return next(new Error('INVALID_DECODING'))
-			next(null, result)
+			if (!result) {
+				return void (next as DataCallback<any>)(
+					new Error('INVALID_DECODING'),
+				)
+			}
+
+			;(next as DataCallback<any>)(null, result)
 		})
 	}
 
 	/**
 	 * The writeProperty command writes a single property of an object to a device.
-	 * @function bacstack.writeProperty
-	 * @param {string} address - IP address of the target device.
-	 * @param {object} objectId - The BACNET object ID to write.
-	 * @param {number} objectId.type - The BACNET object type to write.
-	 * @param {number} objectId.instance - The BACNET object instance to write.
-	 * @param {number} propertyId - The BACNET property id in the specified object to write.
-	 * @param {object[]} values - A list of values to be written to the specified property.
-	 * @param {ApplicationTag} values.tag - The data-type of the value to be written.
-	 * @param {number} values.value - The actual value to be written.
-	 * @param {object=} options
-	 * @param {MaxSegmentsAccepted=} options.maxSegments - The maximimal allowed number of segments.
-	 * @param {MaxApduLengthAccepted=} options.maxApdu - The maximal allowed APDU size.
-	 * @param {number=} options.invokeId - The invoke ID of the confirmed service telegram.
-	 * @param {number=} options.arrayIndex - The array index of the property to be read.
-	 * @param {number=} options.priority - The priority of the value to be written.
-	 * @param {function} next - The callback containing an error, in case of a failure.
-	 * @example
-	 * const bacnet = require('bacstack');
-	 * const client = new bacnet();
-	 *
-	 * client.writeProperty('192.168.1.43', {type: 8, instance: 44301}, 28, [
-	 *   {type: bacnet.enum.ApplicationTag.REAL, value: 100}
-	 * ], (err) => {
-	 *   console.log('error: ', err);
-	 * });
+	 * @param receiver - IP address or sender object of the target device
+	 * @param objectId - The BACNET object ID to write
+	 * @param propertyId - The BACNET property id in the specified object to write
+	 * @param values - A list of values to be written to the specified property
+	 * @param options - Options for the write operation
+	 * @param next - The callback containing an error, in case of a failure and value object in case of success
 	 */
 	writeProperty(
-		address: string,
+		receiver: string | { address: string; forwardedFrom?: string },
 		objectId: BACNetObjectID,
 		propertyId: number,
 		values: BACNetAppData[],
-		callback: ErrorCallback,
-	): void
-	writeProperty(
-		address: string,
-		objectId: BACNetObjectID,
-		propertyId: number,
-		values: BACNetAppData[],
-		options: WritePropertyOptions,
-		callback: ErrorCallback,
-	): void
-	writeProperty(
-		address: string,
-		objectId: BACNetObjectID,
-		propertyId: number,
-		values: BACNetAppData[],
-		optionsOrCallback: WritePropertyOptions | ErrorCallback,
-		callback?: ErrorCallback,
+		options: WritePropertyOptions | ErrorCallback,
+		next?: ErrorCallback,
 	): void {
-		if (typeof optionsOrCallback !== 'function' && !callback) {
-			throw new Error('A callback function must be provided')
-		}
-
-		const next: ErrorCallback =
-			typeof optionsOrCallback === 'function'
-				? optionsOrCallback
-				: callback
-
-		const options: WritePropertyOptions =
-			typeof optionsOrCallback === 'function' ? {} : optionsOrCallback
-
-		const settings = {
+		next = next || (options as ErrorCallback)
+		const settings: WritePropertyOptions = {
 			maxSegments:
-				options.maxSegments || baEnum.MaxSegmentsAccepted.SEGMENTS_65,
+				(options as WritePropertyOptions).maxSegments ||
+				baEnum.MaxSegmentsAccepted.SEGMENTS_65,
 			maxApdu:
-				options.maxApdu || baEnum.MaxApduLengthAccepted.OCTETS_1476,
-			invokeId: options.invokeId || this._getInvokeId(),
-			arrayIndex: options.arrayIndex || baEnum.ASN1_ARRAY_ALL,
-			priority: options.priority,
+				(options as WritePropertyOptions).maxApdu ||
+				baEnum.MaxApduLengthAccepted.OCTETS_1476,
+			invokeId:
+				(options as WritePropertyOptions).invokeId ||
+				this._getInvokeId(),
+			arrayIndex:
+				(options as WritePropertyOptions).arrayIndex ||
+				baEnum.ASN1_ARRAY_ALL,
+			priority:
+				(options as WritePropertyOptions).priority ||
+				baEnum.ASN1_NO_PRIORITY,
 		}
-		const buffer = this._getBuffer()
+
+		const buffer: EncodeBuffer = this._getBuffer(
+			receiver && typeof receiver !== 'string' && receiver.forwardedFrom,
+		)
 		baNpdu.encode(
 			buffer,
 			baEnum.NpduControlPriority.NORMAL_MESSAGE |
-				baEnum.NpduControlBits.EXPECTING_REPLY,
-			address,
+				baEnum.NpduControlBit.EXPECTING_REPLY,
+			receiver,
 			null,
 			DEFAULT_HOP_COUNT,
 			baEnum.NetworkLayerMessageType.WHO_IS_ROUTER_TO_NETWORK,
 			0,
 		)
+
 		baApdu.encodeConfirmedServiceRequest(
 			buffer,
 			baEnum.PduType.CONFIRMED_REQUEST,
@@ -1303,6 +1135,7 @@ export default class Client extends EventEmitter {
 			0,
 			0,
 		)
+
 		baServices.writeProperty.encode(
 			buffer,
 			objectId.type,
@@ -1312,87 +1145,42 @@ export default class Client extends EventEmitter {
 			settings.priority,
 			values,
 		)
-		baBvlc.encode(
-			buffer.buffer,
-			baEnum.BvlcResultPurpose.ORIGINAL_UNICAST_NPDU,
-			buffer.offset,
-		)
-		this._transport.send(buffer.buffer, buffer.offset, address)
-		this._addCallback(settings.invokeId, (err) => {
-			if (next) next(err)
+		this.sendBvlc(receiver, buffer)
+
+		this._addCallback(settings.invokeId, (err, data) => {
+			;(next as ErrorCallback)(err)
 		})
 	}
 
 	/**
 	 * The readPropertyMultiple command reads multiple properties in multiple objects from a device.
-	 * @function bacstack.readPropertyMultiple
-	 * @param {string} address - IP address of the target device.
-	 * @param {object[]} propertiesArray - List of object and property specifications to be read.
-	 * @param {object} propertiesArray.objectId - Specifies which object to read.
-	 * @param {number} propertiesArray.objectId.type - The BACNET object type to read.
-	 * @param {number} propertiesArray.objectId.instance - The BACNET object instance to read.
-	 * @param {object[]} propertiesArray.properties - List of properties to be read.
-	 * @param {number} propertiesArray.properties.id - The BACNET property id in the specified object to read. Also supports 8 for all properties.
-	 * @param {object=} options
-	 * @param {MaxSegmentsAccepted=} options.maxSegments - The maximimal allowed number of segments.
-	 * @param {MaxApduLengthAccepted=} options.maxApdu - The maximal allowed APDU size.
-	 * @param {number=} options.invokeId - The invoke ID of the confirmed service telegram.
-	 * @param {function} next - The callback containing an error, in case of a failure and value object in case of success.
-	 * @example
-	 * const bacnet = require('bacstack');
-	 * const client = new bacnet();
-	 *
-	 * const propertiesArray = [
-	 *   {objectId: {type: 8, instance: 4194303}, properties: [{id: 8}]}
-	 * ];
-	 * client.readPropertyMultiple('192.168.1.43', propertiesArray, (err, value) => {
-	 *   console.log('value: ', value);
-	 * });
 	 */
 	readPropertyMultiple(
-		address: string,
+		receiver: string | { address: string; forwardedFrom?: string },
 		propertiesArray: BACNetReadAccessSpecification[],
-		callback: DataCallback<DecodeAcknowledgeMultipleResult>,
-	): void
-	readPropertyMultiple(
-		address: string,
-		propertiesArray: BACNetReadAccessSpecification[],
-		options: ServiceOptions,
-		callback: DataCallback<DecodeAcknowledgeMultipleResult>,
-	): void
-	readPropertyMultiple(
-		address: string,
-		propertiesArray: BACNetReadAccessSpecification[],
-		optionsOrCallback:
-			| ServiceOptions
-			| DataCallback<DecodeAcknowledgeMultipleResult>,
-		callback?: DataCallback<DecodeAcknowledgeMultipleResult>,
+		options: ServiceOptions | DataCallback<DecodeAcknowledgeMultipleResult>,
+		next?: DataCallback<DecodeAcknowledgeMultipleResult>,
 	): void {
-		if (typeof optionsOrCallback !== 'function' && !callback) {
-			throw new Error('A callback function must be provided')
-		}
-
-		const next: DataCallback<DecodeAcknowledgeMultipleResult> =
-			typeof optionsOrCallback === 'function'
-				? optionsOrCallback
-				: callback
-
-		const options: ServiceOptions =
-			typeof optionsOrCallback === 'function' ? {} : optionsOrCallback
-
+		next =
+			next || (options as DataCallback<DecodeAcknowledgeMultipleResult>)
 		const settings = {
 			maxSegments:
-				options.maxSegments || baEnum.MaxSegmentsAccepted.SEGMENTS_65,
+				(options as ServiceOptions).maxSegments ||
+				baEnum.MaxSegmentsAccepted.SEGMENTS_65,
 			maxApdu:
-				options.maxApdu || baEnum.MaxApduLengthAccepted.OCTETS_1476,
-			invokeId: options.invokeId || this._getInvokeId(),
+				(options as ServiceOptions).maxApdu ||
+				baEnum.MaxApduLengthAccepted.OCTETS_1476,
+			invokeId:
+				(options as ServiceOptions).invokeId || this._getInvokeId(),
 		}
-		const buffer = this._getBuffer()
+		const buffer = this._getBuffer(
+			receiver && (receiver as { forwardedFrom?: string }).forwardedFrom,
+		)
 		baNpdu.encode(
 			buffer,
 			baEnum.NpduControlPriority.NORMAL_MESSAGE |
-				baEnum.NpduControlBits.EXPECTING_REPLY,
-			address,
+				baEnum.NpduControlBit.EXPECTING_REPLY,
+			receiver,
 			null,
 			DEFAULT_HOP_COUNT,
 			baEnum.NetworkLayerMessageType.WHO_IS_ROUTER_TO_NETWORK,
@@ -1414,99 +1202,58 @@ export default class Client extends EventEmitter {
 			0,
 		)
 		baServices.readPropertyMultiple.encode(buffer, propertiesArray)
-		baBvlc.encode(
-			buffer.buffer,
-			baEnum.BvlcResultPurpose.ORIGINAL_UNICAST_NPDU,
-			buffer.offset,
-		)
-		this._transport.send(buffer.buffer, buffer.offset, address)
+		this.sendBvlc(receiver, buffer)
 		this._addCallback(settings.invokeId, (err, data) => {
-			if (err) return next(err)
+			if (err) {
+				return void next(err)
+			}
 			const result = baServices.readPropertyMultiple.decodeAcknowledge(
 				data.buffer,
 				data.offset,
 				data.length,
 			)
-			if (!result) return next(new Error('INVALID_DECODING'))
+			if (!result) {
+				return void next(new Error('INVALID_DECODING'))
+			}
 			next(null, result)
 		})
 	}
 
 	/**
 	 * The writePropertyMultiple command writes multiple properties in multiple objects to a device.
-	 * @function bacstack.writePropertyMultiple
-	 * @param {string} address - IP address of the target device.
-	 * @param {object[]} values - List of object and property specifications to be written.
-	 * @param {object} values.objectId - Specifies which object to read.
-	 * @param {number} values.objectId.type - The BACNET object type to read.
-	 * @param {number} values.objectId.instance - The BACNET object instance to read.
-	 * @param {object[]} values.values - List of properties to be written.
-	 * @param {object} values.values.property - Property specifications to be written.
-	 * @param {number} values.values.property.id - The BACNET property id in the specified object to write.
-	 * @param {number} values.values.property.index - The array index of the property to be written.
-	 * @param {object[]} values.values.value - A list of values to be written to the specified property.
-	 * @param {ApplicationTag} values.values.value.tag - The data-type of the value to be written.
-	 * @param {object} values.values.value.value - The actual value to be written.
-	 * @param {number} values.values.priority - The priority to be used for writing to the property.
-	 * @param {object=} options
-	 * @param {MaxSegmentsAccepted=} options.maxSegments - The maximimal allowed number of segments.
-	 * @param {MaxApduLengthAccepted=} options.maxApdu - The maximal allowed APDU size.
-	 * @param {number=} options.invokeId - The invoke ID of the confirmed service telegram.
-	 * @param {function} next - The callback containing an error, in case of a failure.
-	 * @example
-	 * const bacnet = require('bacstack');
-	 * const client = new bacnet();
-	 *
-	 * const values = [
-	 *   {objectId: {type: 8, instance: 44301}, values: [
-	 *     {property: {id: 28, index: 12}, value: [{type: bacnet.enum.ApplicationTag.BOOLEAN, value: true}], priority: 8}
-	 *   ]}
-	 * ];
-	 * client.writePropertyMultiple('192.168.1.43', values, (err) => {
-	 *   console.log('error: ', err);
-	 * });
 	 */
 	writePropertyMultiple(
-		address: string,
-		values: any[],
-		callback: ErrorCallback,
-	): void
-	writePropertyMultiple(
-		address: string,
-		values: any[],
-		options: ServiceOptions,
-		callback: ErrorCallback,
-	): void
-	writePropertyMultiple(
-		address: string,
-		values: any[],
-		optionsOrCallback: ServiceOptions | ErrorCallback,
-		callback?: ErrorCallback,
+		receiver: string | { address: string; forwardedFrom?: string },
+		values: Array<{
+			objectId: BACNetObjectID
+			values: Array<{
+				property: { id: number; index: number }
+				value: Array<{ type: number; value: any }>
+				priority: number
+			}>
+		}>,
+		options: ServiceOptions | ErrorCallback,
+		next?: ErrorCallback,
 	): void {
-		if (typeof optionsOrCallback !== 'function' && !callback) {
-			throw new Error('A callback function must be provided')
-		}
-
-		const next: ErrorCallback =
-			typeof optionsOrCallback === 'function'
-				? optionsOrCallback
-				: callback
-
-		const options: ServiceOptions =
-			typeof optionsOrCallback === 'function' ? {} : optionsOrCallback
+		next = next || (options as ErrorCallback)
 		const settings = {
 			maxSegments:
-				options.maxSegments || baEnum.MaxSegmentsAccepted.SEGMENTS_65,
+				(options as ServiceOptions).maxSegments ||
+				baEnum.MaxSegmentsAccepted.SEGMENTS_65,
 			maxApdu:
-				options.maxApdu || baEnum.MaxApduLengthAccepted.OCTETS_1476,
-			invokeId: options.invokeId || this._getInvokeId(),
+				(options as ServiceOptions).maxApdu ||
+				baEnum.MaxApduLengthAccepted.OCTETS_1476,
+			invokeId:
+				(options as ServiceOptions).invokeId || this._getInvokeId(),
 		}
-		const buffer = this._getBuffer()
+		const buffer = this._getBuffer(
+			receiver && (receiver as { forwardedFrom?: string }).forwardedFrom,
+		)
 		baNpdu.encode(
 			buffer,
 			baEnum.NpduControlPriority.NORMAL_MESSAGE |
-				baEnum.NpduControlBits.EXPECTING_REPLY,
-			address,
+				baEnum.NpduControlBit.EXPECTING_REPLY,
+			receiver,
 		)
 		baApdu.encodeConfirmedServiceRequest(
 			buffer,
@@ -1517,80 +1264,110 @@ export default class Client extends EventEmitter {
 			settings.invokeId,
 		)
 		baServices.writePropertyMultiple.encodeObject(buffer, values)
-		baBvlc.encode(
-			buffer.buffer,
-			baEnum.BvlcResultPurpose.ORIGINAL_UNICAST_NPDU,
-			buffer.offset,
-		)
-		this._transport.send(buffer.buffer, buffer.offset, address)
-		this._addCallback(settings.invokeId, (err) => next(err))
+		this.sendBvlc(receiver, buffer)
+		this._addCallback(settings.invokeId, (err, data) => {
+			next(err)
+		})
 	}
 
 	/**
-	 * The deviceCommunicationControl command enables or disables network communication of the target device.
-	 * @function bacstack.deviceCommunicationControl
-	 * @param {string} address - IP address of the target device.
-	 * @param {number} timeDuration - The time to hold the network communication state in seconds. 0 for infinite.
-	 * @param {EnableDisable} enableDisable - The network communication state to set.
-	 * @param {object=} options
-	 * @param {MaxSegmentsAccepted=} options.maxSegments - The maximimal allowed number of segments.
-	 * @param {MaxApduLengthAccepted=} options.maxApdu - The maximal allowed APDU size.
-	 * @param {number=} options.invokeId - The invoke ID of the confirmed service telegram.
-	 * @param {string=} options.password - The optional password used to set the network communication state.
-	 * @param {function} next - The callback containing an error, in case of a failure.
-	 * @example
-	 * const bacnet = require('bacstack');
-	 * const client = new bacnet();
-	 *
-	 * client.deviceCommunicationControl('192.168.1.43', 0, bacnet.enum.EnableDisable.DISABLE, (err) => {
-	 *   console.log('error: ', err);
-	 * });
+	 * The confirmedCOVNotification command is used to push notifications to other
+	 * systems that have registered with us via a subscribeCOV message.
 	 */
-	deviceCommunicationControl(
-		address: string,
-		timeDuration: number,
-		enableDisable: number,
-		callback: ErrorCallback,
-	): void
-	deviceCommunicationControl(
-		address: string,
-		timeDuration: number,
-		enableDisable: number,
-		options: DeviceCommunicationOptions,
-		callback: ErrorCallback,
-	): void
-	deviceCommunicationControl(
-		address: string,
-		timeDuration: number,
-		enableDisable: number,
-		optionsOrCallback: DeviceCommunicationOptions | ErrorCallback,
-		callback?: ErrorCallback,
+	confirmedCOVNotification(
+		receiver: string | { address: string; forwardedFrom?: string },
+		monitoredObject: BACNetObjectID,
+		subscribeId: number,
+		initiatingDeviceId: number,
+		lifetime: number,
+		values: Array<{
+			property: { id: number }
+			value: Array<{ type: number; value: any }>
+		}>,
+		options: ServiceOptions | ErrorCallback,
+		next?: ErrorCallback,
 	): void {
-		if (typeof optionsOrCallback !== 'function' && !callback) {
-			throw new Error('A callback function must be provided')
-		}
-
-		const next: ErrorCallback =
-			typeof optionsOrCallback === 'function'
-				? optionsOrCallback
-				: callback
-
-		const options: DeviceCommunicationOptions =
-			typeof optionsOrCallback === 'function' ? {} : optionsOrCallback
+		next = next || (options as ErrorCallback)
 		const settings = {
 			maxSegments:
-				options.maxSegments || baEnum.MaxSegmentsAccepted.SEGMENTS_65,
+				(options as ServiceOptions).maxSegments ||
+				baEnum.MaxSegmentsAccepted.SEGMENTS_65,
 			maxApdu:
-				options.maxApdu || baEnum.MaxApduLengthAccepted.OCTETS_1476,
-			invokeId: options.invokeId || this._getInvokeId(),
-			password: options.password,
+				(options as ServiceOptions).maxApdu ||
+				baEnum.MaxApduLengthAccepted.OCTETS_1476,
+			invokeId:
+				(options as ServiceOptions).invokeId || this._getInvokeId(),
 		}
 		const buffer = this._getBuffer()
 		baNpdu.encode(
 			buffer,
 			baEnum.NpduControlPriority.NORMAL_MESSAGE |
-				baEnum.NpduControlBits.EXPECTING_REPLY,
-			address,
+				baEnum.NpduControlBit.EXPECTING_REPLY,
+			receiver,
+		)
+		baApdu.encodeConfirmedServiceRequest(
+			buffer,
+			baEnum.PduType.CONFIRMED_REQUEST,
+			baEnum.ConfirmedServiceChoice.CONFIRMED_COV_NOTIFICATION,
+			settings.maxSegments,
+			settings.maxApdu,
+			settings.invokeId,
+			0,
+			0,
+		)
+		baServices.covNotify.encode(
+			buffer,
+			subscribeId,
+			initiatingDeviceId,
+			monitoredObject,
+			lifetime,
+			values,
+		)
+		baBvlc.encode(
+			buffer.buffer,
+			baEnum.BvlcResultPurpose.ORIGINAL_UNICAST_NPDU,
+			buffer.offset,
+		)
+		this.sendBvlc(receiver, buffer)
+		this._addCallback(settings.invokeId, (err, data) => {
+			if (err) {
+				return void next(err)
+			}
+			next()
+		})
+	}
+
+	/**
+	 * The deviceCommunicationControl command enables or disables network communication of the target device.
+	 */
+	deviceCommunicationControl(
+		receiver: string | { address: string; forwardedFrom?: string },
+		timeDuration: number,
+		enableDisable: number,
+		options: DeviceCommunicationOptions | ErrorCallback,
+		next?: ErrorCallback,
+	): void {
+		next = next || (options as ErrorCallback)
+		const settings = {
+			maxSegments:
+				(options as DeviceCommunicationOptions).maxSegments ||
+				baEnum.MaxSegmentsAccepted.SEGMENTS_65,
+			maxApdu:
+				(options as DeviceCommunicationOptions).maxApdu ||
+				baEnum.MaxApduLengthAccepted.OCTETS_1476,
+			invokeId:
+				(options as DeviceCommunicationOptions).invokeId ||
+				this._getInvokeId(),
+			password: (options as DeviceCommunicationOptions).password,
+		}
+		const buffer = this._getBuffer(
+			receiver && (receiver as { forwardedFrom?: string }).forwardedFrom,
+		)
+		baNpdu.encode(
+			buffer,
+			baEnum.NpduControlPriority.NORMAL_MESSAGE |
+				baEnum.NpduControlBit.EXPECTING_REPLY,
+			receiver,
 		)
 		baApdu.encodeConfirmedServiceRequest(
 			buffer,
@@ -1608,76 +1385,42 @@ export default class Client extends EventEmitter {
 			enableDisable,
 			settings.password,
 		)
-		baBvlc.encode(
-			buffer.buffer,
-			baEnum.BvlcResultPurpose.ORIGINAL_UNICAST_NPDU,
-			buffer.offset,
-		)
-		this._transport.send(buffer.buffer, buffer.offset, address)
-		this._addCallback(settings.invokeId, (err) => next(err))
+		this.sendBvlc(receiver, buffer)
+		this._addCallback(settings.invokeId, (err, data) => {
+			next(err)
+		})
 	}
 
 	/**
 	 * The reinitializeDevice command initiates a restart of the target device.
-	 * @function bacstack.reinitializeDevice
-	 * @param {string} address - IP address of the target device.
-	 * @param {ReinitializedState} state - The type of restart to be initiated.
-	 * @param {object=} options
-	 * @param {MaxSegmentsAccepted=} options.maxSegments - The maximimal allowed number of segments.
-	 * @param {MaxApduLengthAccepted=} options.maxApdu - The maximal allowed APDU size.
-	 * @param {number=} options.invokeId - The invoke ID of the confirmed service telegram.
-	 * @param {string=} options.password - The optional password used to restart the device.
-	 * @param {function} next - The callback containing an error, in case of a failure.
-	 * @example
-	 * const bacnet = require('bacstack');
-	 * const client = new bacnet();
-	 *
-	 * client.reinitializeDevice('192.168.1.43', bacnet.enum.ReinitializedState.COLDSTART, (err) => {
-	 *   console.log('error: ', err);
-	 * });
 	 */
 	reinitializeDevice(
-		address: string,
+		receiver: string | { address: string; forwardedFrom?: string },
 		state: number,
-		callback: ErrorCallback,
-	): void
-	reinitializeDevice(
-		address: string,
-		state: number,
-		options: ReinitializeDeviceOptions,
-		callback: ErrorCallback,
-	): void
-	reinitializeDevice(
-		address: string,
-		state: number,
-		optionsOrCallback: ReinitializeDeviceOptions | ErrorCallback,
-		callback?: ErrorCallback,
+		options: ReinitializeDeviceOptions | ErrorCallback,
+		next?: ErrorCallback,
 	): void {
-		if (typeof optionsOrCallback !== 'function' && !callback) {
-			throw new Error('A callback function must be provided')
-		}
-
-		const next: ErrorCallback =
-			typeof optionsOrCallback === 'function'
-				? optionsOrCallback
-				: callback
-
-		const options: ReinitializeDeviceOptions =
-			typeof optionsOrCallback === 'function' ? {} : optionsOrCallback
+		next = next || (options as ErrorCallback)
 		const settings = {
 			maxSegments:
-				options.maxSegments || baEnum.MaxSegmentsAccepted.SEGMENTS_65,
+				(options as ReinitializeDeviceOptions).maxSegments ||
+				baEnum.MaxSegmentsAccepted.SEGMENTS_65,
 			maxApdu:
-				options.maxApdu || baEnum.MaxApduLengthAccepted.OCTETS_1476,
-			invokeId: options.invokeId || this._getInvokeId(),
-			password: options.password,
+				(options as ReinitializeDeviceOptions).maxApdu ||
+				baEnum.MaxApduLengthAccepted.OCTETS_1476,
+			invokeId:
+				(options as ReinitializeDeviceOptions).invokeId ||
+				this._getInvokeId(),
+			password: (options as ReinitializeDeviceOptions).password,
 		}
-		const buffer = this._getBuffer()
+		const buffer = this._getBuffer(
+			receiver && (receiver as { forwardedFrom?: string }).forwardedFrom,
+		)
 		baNpdu.encode(
 			buffer,
 			baEnum.NpduControlPriority.NORMAL_MESSAGE |
-				baEnum.NpduControlBits.EXPECTING_REPLY,
-			address,
+				baEnum.NpduControlBit.EXPECTING_REPLY,
+			receiver,
 		)
 		baApdu.encodeConfirmedServiceRequest(
 			buffer,
@@ -1690,86 +1433,42 @@ export default class Client extends EventEmitter {
 			0,
 		)
 		baServices.reinitializeDevice.encode(buffer, state, settings.password)
-		baBvlc.encode(
-			buffer.buffer,
-			baEnum.BvlcResultPurpose.ORIGINAL_UNICAST_NPDU,
-			buffer.offset,
-		)
-		this._transport.send(buffer.buffer, buffer.offset, address)
-		this._addCallback(settings.invokeId, (err) => next(err))
+		this.sendBvlc(receiver, buffer)
+		this._addCallback(settings.invokeId, (err, data) => {
+			next(err)
+		})
 	}
 
 	/**
-	 * The writeFile command writes a file buffer to a specific position of a file object.
-	 * @function bacstack.writeFile
-	 * @param {string} address - IP address of the target device.
-	 * @param {object} objectId - The BACNET object ID representing the file object.
-	 * @param {number} objectId.type - The BACNET object type representing the file object.
-	 * @param {number} objectId.instance - The BACNET object instance representing the file object.
-	 * @param {number} position - The position in the file to write at.
-	 * @param {Array.<number[]>} fileBuffer - The content to be written to the file.
-	 * @param {object=} options
-	 * @param {MaxSegmentsAccepted=} options.maxSegments - The maximimal allowed number of segments.
-	 * @param {MaxApduLengthAccepted=} options.maxApdu - The maximal allowed APDU size.
-	 * @param {number=} options.invokeId - The invoke ID of the confirmed service telegram.
-	 * @param {function} next - The callback containing an error, in case of a failure and value object in case of success.
-	 * @example
-	 * const bacnet = require('bacstack');
-	 * const client = new bacnet();
-	 *
-	 * client.writeFile('192.168.1.43', {type: 8, instance: 44301}, 0, [[5, 6, 7, 8], [5, 6, 7, 8]], (err, value) => {
-	 *   console.log('value: ', value);
-	 * });
+	 * Writes a file to a remote device.
 	 */
-
 	writeFile(
-		address: string,
+		receiver: string | { address: string; forwardedFrom?: string },
 		objectId: BACNetObjectID,
 		position: number,
-		fileBuffer: number[][],
-		callback: DataCallback<any>,
-	): void
-	writeFile(
-		address: string,
-		objectId: BACNetObjectID,
-		position: number,
-		fileBuffer: number[][],
-		options: ServiceOptions,
-		callback: DataCallback<any>,
-	): void
-	writeFile(
-		address: string,
-		objectId: BACNetObjectID,
-		position: number,
-		fileBuffer: number[][],
-		optionsOrCallback: ServiceOptions | DataCallback<any>,
-		callback?: DataCallback<any>,
+		fileBuffer: Buffer,
+		options: ServiceOptions | DataCallback<any>,
+		next?: DataCallback<any>,
 	): void {
-		if (typeof optionsOrCallback !== 'function' && !callback) {
-			throw new Error('A callback function must be provided')
-		}
-
-		const next: DataCallback<any> =
-			typeof optionsOrCallback === 'function'
-				? optionsOrCallback
-				: callback
-
-		const options: ServiceOptions =
-			typeof optionsOrCallback === 'function' ? {} : optionsOrCallback
-
+		next = next || (options as DataCallback<any>)
 		const settings = {
 			maxSegments:
-				options.maxSegments || baEnum.MaxSegmentsAccepted.SEGMENTS_65,
+				(options as ServiceOptions).maxSegments ||
+				baEnum.MaxSegmentsAccepted.SEGMENTS_65,
 			maxApdu:
-				options.maxApdu || baEnum.MaxApduLengthAccepted.OCTETS_1476,
-			invokeId: options.invokeId || this._getInvokeId(),
+				(options as ServiceOptions).maxApdu ||
+				baEnum.MaxApduLengthAccepted.OCTETS_1476,
+			invokeId:
+				(options as ServiceOptions).invokeId || this._getInvokeId(),
 		}
-		const buffer = this._getBuffer()
+		const buffer = this._getBuffer(
+			receiver && (receiver as { forwardedFrom?: string }).forwardedFrom,
+		)
 		baNpdu.encode(
 			buffer,
 			baEnum.NpduControlPriority.NORMAL_MESSAGE |
-				baEnum.NpduControlBits.EXPECTING_REPLY,
-			address,
+				baEnum.NpduControlBit.EXPECTING_REPLY,
+			receiver,
 		)
 		baApdu.encodeConfirmedServiceRequest(
 			buffer,
@@ -1781,100 +1480,60 @@ export default class Client extends EventEmitter {
 			0,
 			0,
 		)
+		const blocks: number[][] = [Array.from(fileBuffer)]
 		baServices.atomicWriteFile.encode(
 			buffer,
 			false,
 			objectId,
 			position,
-			fileBuffer,
+			blocks,
 		)
-		baBvlc.encode(
-			buffer.buffer,
-			baEnum.BvlcResultPurpose.ORIGINAL_UNICAST_NPDU,
-			buffer.offset,
-		)
-		this._transport.send(buffer.buffer, buffer.offset, address)
+		this.sendBvlc(receiver, buffer)
 		this._addCallback(settings.invokeId, (err, data) => {
-			if (err) return next(err)
+			if (err) {
+				return void next(err)
+			}
 			const result = baServices.atomicWriteFile.decodeAcknowledge(
 				data.buffer,
 				data.offset,
 			)
-			if (!result) return next(new Error('INVALID_DECODING'))
+			if (!result) {
+				return void next(new Error('INVALID_DECODING'))
+			}
 			next(null, result)
 		})
 	}
 
 	/**
-	 * The readFile command reads a number of bytes at a specific position of a file object.
-	 * @function bacstack.readFile
-	 * @param {string} address - IP address of the target device.
-	 * @param {object} objectId - The BACNET object ID representing the file object.
-	 * @param {number} objectId.type - The BACNET object type representing the file object.
-	 * @param {number} objectId.instance - The BACNET object instance representing the file object.
-	 * @param {number} position - The position in the file to read at.
-	 * @param {number} count - The number of octets to read.
-	 * @param {object=} options
-	 * @param {MaxSegmentsAccepted=} options.maxSegments - The maximimal allowed number of segments.
-	 * @param {MaxApduLengthAccepted=} options.maxApdu - The maximal allowed APDU size.
-	 * @param {number=} options.invokeId - The invoke ID of the confirmed service telegram.
-	 * @param {function} next - The callback containing an error, in case of a failure and value object in case of success.
-	 * @example
-	 * const bacnet = require('bacstack');
-	 * const client = new bacnet();
-	 *
-	 * client.readFile('192.168.1.43', {type: 8, instance: 44301}, 0, 100, (err, value) => {
-	 *   console.log('value: ', value);
-	 * });
+	 * Reads a file from a remote device.
 	 */
 	readFile(
-		address: string,
+		receiver: string | { address: string; forwardedFrom?: string },
 		objectId: BACNetObjectID,
 		position: number,
 		count: number,
-		callback: DataCallback<any>,
-	): void
-	readFile(
-		address: string,
-		objectId: BACNetObjectID,
-		position: number,
-		count: number,
-		options: ServiceOptions,
-		callback: DataCallback<any>,
-	): void
-	readFile(
-		address: string,
-		objectId: BACNetObjectID,
-		position: number,
-		count: number,
-		optionsOrCallback: ServiceOptions | DataCallback<any>,
-		callback?: DataCallback<any>,
+		options: ServiceOptions | DataCallback<any>,
+		next?: DataCallback<any>,
 	): void {
-		if (typeof optionsOrCallback !== 'function' && !callback) {
-			throw new Error('A callback function must be provided')
-		}
-
-		const next: DataCallback<any> =
-			typeof optionsOrCallback === 'function'
-				? optionsOrCallback
-				: callback
-
-		const options: ServiceOptions =
-			typeof optionsOrCallback === 'function' ? {} : optionsOrCallback
-
+		next = next || (options as DataCallback<any>)
 		const settings = {
 			maxSegments:
-				options.maxSegments || baEnum.MaxSegmentsAccepted.SEGMENTS_65,
+				(options as ServiceOptions).maxSegments ||
+				baEnum.MaxSegmentsAccepted.SEGMENTS_65,
 			maxApdu:
-				options.maxApdu || baEnum.MaxApduLengthAccepted.OCTETS_1476,
-			invokeId: options.invokeId || this._getInvokeId(),
+				(options as ServiceOptions).maxApdu ||
+				baEnum.MaxApduLengthAccepted.OCTETS_1476,
+			invokeId:
+				(options as ServiceOptions).invokeId || this._getInvokeId(),
 		}
-		const buffer = this._getBuffer()
+		const buffer = this._getBuffer(
+			receiver && (receiver as { forwardedFrom?: string }).forwardedFrom,
+		)
 		baNpdu.encode(
 			buffer,
 			baEnum.NpduControlPriority.NORMAL_MESSAGE |
-				baEnum.NpduControlBits.EXPECTING_REPLY,
-			address,
+				baEnum.NpduControlBit.EXPECTING_REPLY,
+			receiver,
 		)
 		baApdu.encodeConfirmedServiceRequest(
 			buffer,
@@ -1893,93 +1552,52 @@ export default class Client extends EventEmitter {
 			position,
 			count,
 		)
-		baBvlc.encode(
-			buffer.buffer,
-			baEnum.BvlcResultPurpose.ORIGINAL_UNICAST_NPDU,
-			buffer.offset,
-		)
-		this._transport.send(buffer.buffer, buffer.offset, address)
+		this.sendBvlc(receiver, buffer)
 		this._addCallback(settings.invokeId, (err, data) => {
-			if (err) return next(err)
+			if (err) {
+				return void next(err)
+			}
 			const result = baServices.atomicReadFile.decodeAcknowledge(
 				data.buffer,
 				data.offset,
 			)
-			if (!result) return next(new Error('INVALID_DECODING'))
+			if (!result) {
+				return void next(new Error('INVALID_DECODING'))
+			}
 			next(null, result)
 		})
 	}
 
 	/**
-	 * The readRange command reads a number if list items of an array or list object.
-	 * @function bacstack.readRange
-	 * @param {string} address - IP address of the target device.
-	 * @param {object} objectId - The BACNET object ID to read.
-	 * @param {number} objectId.type - The BACNET object type to read.
-	 * @param {number} objectId.instance - The BACNET object instance to read.
-	 * @param {number} idxBegin - The index of the first/last item to read.
-	 * @param {number} quantity - The number of records to read.
-	 * @param {object=} options
-	 * @param {MaxSegmentsAccepted=} options.maxSegments - The maximimal allowed number of segments.
-	 * @param {MaxApduLengthAccepted=} options.maxApdu - The maximal allowed APDU size.
-	 * @param {number=} options.invokeId - The invoke ID of the confirmed service telegram.
-	 * @param {function} next - The callback containing an error, in case of a failure and value object in case of success.
-	 * @example
-	 * const bacnet = require('bacstack');
-	 * const client = new bacnet();
-	 *
-	 * client.readRange('192.168.1.43', {type: 8, instance: 44301}, 0, 200, (err, value) => {
-	 *   console.log('value: ', value);
-	 * });
+	 * Reads a range of data from a remote device.
 	 */
 	readRange(
-		address: string,
+		receiver: string | { address: string; forwardedFrom?: string },
 		objectId: BACNetObjectID,
 		idxBegin: number,
 		quantity: number,
-		callback: DataCallback<any>,
-	): void
-	readRange(
-		address: string,
-		objectId: BACNetObjectID,
-		idxBegin: number,
-		quantity: number,
-		options: ServiceOptions,
-		callback: DataCallback<any>,
-	): void
-	readRange(
-		address: string,
-		objectId: BACNetObjectID,
-		idxBegin: number,
-		quantity: number,
-		optionsOrCallback: ServiceOptions | DataCallback<any>,
-		callback?: DataCallback<any>,
+		options: ServiceOptions | DataCallback<any>,
+		next?: DataCallback<any>,
 	): void {
-		if (typeof optionsOrCallback !== 'function' && !callback) {
-			throw new Error('A callback function must be provided')
-		}
-
-		const next: DataCallback<any> =
-			typeof optionsOrCallback === 'function'
-				? optionsOrCallback
-				: callback
-
-		const options: ServiceOptions =
-			typeof optionsOrCallback === 'function' ? {} : optionsOrCallback
-
+		next = next || (options as DataCallback<any>)
 		const settings = {
 			maxSegments:
-				options.maxSegments || baEnum.MaxSegmentsAccepted.SEGMENTS_65,
+				(options as ServiceOptions).maxSegments ||
+				baEnum.MaxSegmentsAccepted.SEGMENTS_65,
 			maxApdu:
-				options.maxApdu || baEnum.MaxApduLengthAccepted.OCTETS_1476,
-			invokeId: options.invokeId || this._getInvokeId(),
+				(options as ServiceOptions).maxApdu ||
+				baEnum.MaxApduLengthAccepted.OCTETS_1476,
+			invokeId:
+				(options as ServiceOptions).invokeId || this._getInvokeId(),
 		}
-		const buffer = this._getBuffer()
+		const buffer = this._getBuffer(
+			receiver && (receiver as { forwardedFrom?: string }).forwardedFrom,
+		)
 		baNpdu.encode(
 			buffer,
 			baEnum.NpduControlPriority.NORMAL_MESSAGE |
-				baEnum.NpduControlBits.EXPECTING_REPLY,
-			address,
+				baEnum.NpduControlBit.EXPECTING_REPLY,
+			receiver,
 		)
 		baApdu.encodeConfirmedServiceRequest(
 			buffer,
@@ -2001,89 +1619,37 @@ export default class Client extends EventEmitter {
 			new Date(),
 			quantity,
 		)
-		baBvlc.encode(
-			buffer.buffer,
-			baEnum.BvlcResultPurpose.ORIGINAL_UNICAST_NPDU,
-			buffer.offset,
-		)
-		this._transport.send(buffer.buffer, buffer.offset, address)
+		this.sendBvlc(receiver, buffer)
 		this._addCallback(settings.invokeId, (err, data) => {
-			if (err) return next(err)
+			if (err) {
+				return void next(err)
+			}
 			const result = baServices.readRange.decodeAcknowledge(
 				data.buffer,
 				data.offset,
 				data.length,
 			)
-			if (!result) return next(new Error('INVALID_DECODING'))
+			if (!result) {
+				return void next(new Error('INVALID_DECODING'))
+			}
 			next(null, result)
 		})
 	}
 
 	/**
-	 * The subscribeCOV command subscribes to an object for "Change of Value" notifications.
-	 * @function bacstack.subscribeCOV
-	 * @param {string} address - IP address of the target device.
-	 * @param {object} objectId - The BACNET object ID to subscribe for.
-	 * @param {number} objectId.type - The BACNET object type to subscribe for.
-	 * @param {number} objectId.instance - The BACNET object instance to subscribe for.
-	 * @param {number} subscribeId - A unique identifier to map the subscription.
-	 * @param {boolean} cancel - Cancel an existing subscription instead of creating a new one.
-	 * @param {boolean} issueConfirmedNotifications - Identifies if unconfirmed/confirmed notifications shall be returned.
-	 * @param {number} lifetime - Number of seconds for the subscription to stay active, 0 for infinite.
-	 * @param {object=} options
-	 * @param {MaxSegmentsAccepted=} options.maxSegments - The maximimal allowed number of segments.
-	 * @param {MaxApduLengthAccepted=} options.maxApdu - The maximal allowed APDU size.
-	 * @param {number=} options.invokeId - The invoke ID of the confirmed service telegram.
-	 * @param {function} next - The callback containing an error, in case of a failure.
-	 * @example
-	 * const bacnet = require('bacstack');
-	 * const client = new bacnet();
-	 *
-	 * client.subscribeCOV('192.168.1.43', {type: 8, instance: 44301}, 7, false, false, 0, (err) => {
-	 *   console.log('error: ', err);
-	 * });
+	 * Subscribes to Change of Value (COV) notifications for an object
 	 */
-	subscribeCOV(
-		address: string,
-		objectId: BACNetObjectID,
-		subscribeId: number,
-		cancel: boolean,
-		issueConfirmedNotifications: boolean,
-		lifetime: number,
-		callback: ErrorCallback,
-	): void
-	subscribeCOV(
-		address: string,
+	public subscribeCov(
+		receiver: string | { address: string; forwardedFrom?: string },
 		objectId: BACNetObjectID,
 		subscribeId: number,
 		cancel: boolean,
 		issueConfirmedNotifications: boolean,
 		lifetime: number,
 		options: ServiceOptions,
-		callback: ErrorCallback,
-	): void
-	subscribeCOV(
-		address: string,
-		objectId: BACNetObjectID,
-		subscribeId: number,
-		cancel: boolean,
-		issueConfirmedNotifications: boolean,
-		lifetime: number,
-		optionsOrCallback: ServiceOptions | ErrorCallback,
-		callback?: ErrorCallback,
+		next?: ErrorCallback,
 	): void {
-		if (typeof optionsOrCallback !== 'function' && !callback) {
-			throw new Error('A callback function must be provided')
-		}
-
-		const next: ErrorCallback =
-			typeof optionsOrCallback === 'function'
-				? optionsOrCallback
-				: callback
-
-		const options: ServiceOptions =
-			typeof optionsOrCallback === 'function' ? {} : optionsOrCallback
-
+		next = next || (options as unknown as ErrorCallback)
 		const settings = {
 			maxSegments:
 				options.maxSegments || baEnum.MaxSegmentsAccepted.SEGMENTS_65,
@@ -2091,12 +1657,14 @@ export default class Client extends EventEmitter {
 				options.maxApdu || baEnum.MaxApduLengthAccepted.OCTETS_1476,
 			invokeId: options.invokeId || this._getInvokeId(),
 		}
-		const buffer = this._getBuffer()
+		const buffer = this._getBuffer(
+			receiver && (receiver as any).forwardedFrom,
+		)
 		baNpdu.encode(
 			buffer,
 			baEnum.NpduControlPriority.NORMAL_MESSAGE |
-				baEnum.NpduControlBits.EXPECTING_REPLY,
-			address,
+				baEnum.NpduControlBit.EXPECTING_REPLY,
+			receiver,
 		)
 		baApdu.encodeConfirmedServiceRequest(
 			buffer,
@@ -2116,82 +1684,32 @@ export default class Client extends EventEmitter {
 			issueConfirmedNotifications,
 			lifetime,
 		)
-		baBvlc.encode(
-			buffer.buffer,
-			baEnum.BvlcResultPurpose.ORIGINAL_UNICAST_NPDU,
-			buffer.offset,
+		this.sendBvlc(receiver, buffer)
+		this._addCallback(
+			settings.invokeId,
+			(err: Error | null, data?: any) => {
+				if (err) {
+					return void next!(err)
+				}
+				next!()
+			},
 		)
-		this._transport.send(buffer.buffer, buffer.offset, address)
-		this._addCallback(settings.invokeId, (err) => next(err))
 	}
 
 	/**
-	 * The subscribeProperty command subscribes to a specific property of an object for "Change of Value" notifications.
-	 * @function bacstack.subscribeProperty
-	 * @param {string} address - IP address of the target device.
-	 * @param {object} objectId - The BACNET object ID to subscribe for.
-	 * @param {number} objectId.type - The BACNET object type to subscribe for.
-	 * @param {number} objectId.instance - The BACNET object instance to subscribe for.
-	 * @param {object} monitoredProperty
-	 * @param {object} monitoredProperty.id - The property ID to subscribe for.
-	 * @param {object} monitoredProperty.index - The property index to subscribe for.
-	 * @param {number} subscribeId - A unique identifier to map the subscription.
-	 * @param {boolean} cancel - Cancel an existing subscription instead of creating a new one.
-	 * @param {boolean} issueConfirmedNotifications - Identifies if unconfirmed/confirmed notifications shall be returned.
-	 * @param {object=} options
-	 * @param {MaxSegmentsAccepted=} options.maxSegments - The maximimal allowed number of segments.
-	 * @param {MaxApduLengthAccepted=} options.maxApdu - The maximal allowed APDU size.
-	 * @param {number=} options.invokeId - The invoke ID of the confirmed service telegram.
-	 * @param {function} next - The callback containing an error, in case of a failure.
-	 * @example
-	 * const bacnet = require('bacstack');
-	 * const client = new bacnet();
-	 *
-	 * client.subscribeProperty('192.168.1.43', {type: 8, instance: 44301}, {id: 80, index: 0}, 8, false, false, (err) => {
-	 *   console.log('error: ', err);
-	 * });
+	 * Subscribes to Change of Value (COV) notifications for a specific property
 	 */
-	subscribeProperty(
-		address: string,
-		objectId: BACNetObjectID,
-		monitoredProperty: BACNetPropertyID,
-		subscribeId: number,
-		cancel: boolean,
-		issueConfirmedNotifications: boolean,
-		callback: ErrorCallback,
-	): void
-	subscribeProperty(
-		address: string,
+	public subscribeProperty(
+		receiver: string | { address: string; forwardedFrom?: string },
 		objectId: BACNetObjectID,
 		monitoredProperty: BACNetPropertyID,
 		subscribeId: number,
 		cancel: boolean,
 		issueConfirmedNotifications: boolean,
 		options: ServiceOptions,
-		callback: ErrorCallback,
-	): void
-	subscribeProperty(
-		address: string,
-		objectId: BACNetObjectID,
-		monitoredProperty: BACNetPropertyID,
-		subscribeId: number,
-		cancel: boolean,
-		issueConfirmedNotifications: boolean,
-		optionsOrCallback: ServiceOptions | ErrorCallback,
-		callback?: ErrorCallback,
+		next?: ErrorCallback,
 	): void {
-		if (typeof optionsOrCallback !== 'function' && !callback) {
-			throw new Error('A callback function must be provided')
-		}
-
-		const next: ErrorCallback =
-			typeof optionsOrCallback === 'function'
-				? optionsOrCallback
-				: callback
-
-		const options: ServiceOptions =
-			typeof optionsOrCallback === 'function' ? {} : optionsOrCallback
-
+		next = next || (options as unknown as ErrorCallback)
 		const settings = {
 			maxSegments:
 				options.maxSegments || baEnum.MaxSegmentsAccepted.SEGMENTS_65,
@@ -2199,12 +1717,14 @@ export default class Client extends EventEmitter {
 				options.maxApdu || baEnum.MaxApduLengthAccepted.OCTETS_1476,
 			invokeId: options.invokeId || this._getInvokeId(),
 		}
-		const buffer = this._getBuffer()
+		const buffer = this._getBuffer(
+			receiver && (receiver as any).forwardedFrom,
+		)
 		baNpdu.encode(
 			buffer,
 			baEnum.NpduControlPriority.NORMAL_MESSAGE |
-				baEnum.NpduControlBits.EXPECTING_REPLY,
-			address,
+				baEnum.NpduControlBit.EXPECTING_REPLY,
+			receiver,
 		)
 		baApdu.encodeConfirmedServiceRequest(
 			buffer,
@@ -2227,47 +1747,83 @@ export default class Client extends EventEmitter {
 			false,
 			0x0f,
 		)
+		this.sendBvlc(receiver, buffer)
+		this._addCallback(
+			settings.invokeId,
+			(err: Error | null, data?: any) => {
+				if (err) {
+					return void next!(err)
+				}
+				next!()
+			},
+		)
+	}
+
+	/**
+	 * Sends an unconfirmed COV notification to a device
+	 */
+	public unconfirmedCOVNotification(
+		receiver: string | { address: string },
+		subscriberProcessId: number,
+		initiatingDeviceId: number,
+		monitoredObjectId: BACNetObjectID,
+		timeRemaining: number,
+		values: Array<{
+			property: {
+				id: number
+				index?: number
+			}
+			value: BACNetAppData[]
+		}>,
+	): void {
+		const buffer = this._getBuffer()
+		baNpdu.encode(
+			buffer,
+			baEnum.NpduControlPriority.NORMAL_MESSAGE,
+			receiver,
+		)
+		baApdu.encodeUnconfirmedServiceRequest(
+			buffer,
+			baEnum.PduType.UNCONFIRMED_REQUEST,
+			baEnum.UnconfirmedServiceChoice.UNCONFIRMED_COV_NOTIFICATION,
+		)
+		baServices.covNotify.encode(
+			buffer,
+			subscriberProcessId,
+			initiatingDeviceId,
+			monitoredObjectId,
+			timeRemaining,
+			values,
+		)
 		baBvlc.encode(
 			buffer.buffer,
 			baEnum.BvlcResultPurpose.ORIGINAL_UNICAST_NPDU,
 			buffer.offset,
 		)
-		this._transport.send(buffer.buffer, buffer.offset, address)
-		this._addCallback(settings.invokeId, (err) => next(err))
+		this._transport.send(
+			buffer.buffer,
+			buffer.offset,
+			(receiver && (receiver as { address?: string }).address) || null,
+		)
 	}
 
-	createObject(
-		address: string,
+	/**
+	 * Creates a new object in a device
+	 */
+	public createObject(
+		receiver: string | { address: string; forwardedFrom?: string },
 		objectId: BACNetObjectID,
-		values: any,
-		callback: ErrorCallback,
-	): void
-	createObject(
-		address: string,
-		objectId: BACNetObjectID,
-		values: any,
+		values: Array<{
+			property: {
+				id: number
+				index?: number
+			}
+			value: BACNetAppData[]
+		}>,
 		options: ServiceOptions,
-		callback: ErrorCallback,
-	): void
-	createObject(
-		address: string,
-		objectId: BACNetObjectID,
-		values: any,
-		optionsOrCallback: ServiceOptions | ErrorCallback,
-		callback?: ErrorCallback,
+		next?: ErrorCallback,
 	): void {
-		if (typeof optionsOrCallback !== 'function' && !callback) {
-			throw new Error('A callback function must be provided')
-		}
-
-		const next: ErrorCallback =
-			typeof optionsOrCallback === 'function'
-				? optionsOrCallback
-				: callback
-
-		const options: ServiceOptions =
-			typeof optionsOrCallback === 'function' ? {} : optionsOrCallback
-
+		next = next || (options as unknown as ErrorCallback)
 		const settings = {
 			maxSegments:
 				options.maxSegments || baEnum.MaxSegmentsAccepted.SEGMENTS_65,
@@ -2275,12 +1831,14 @@ export default class Client extends EventEmitter {
 				options.maxApdu || baEnum.MaxApduLengthAccepted.OCTETS_1476,
 			invokeId: options.invokeId || this._getInvokeId(),
 		}
-		const buffer = this._getBuffer()
+		const buffer = this._getBuffer(
+			receiver && (receiver as any).forwardedFrom,
+		)
 		baNpdu.encode(
 			buffer,
 			baEnum.NpduControlPriority.NORMAL_MESSAGE |
-				baEnum.NpduControlBits.EXPECTING_REPLY,
-			address,
+				baEnum.NpduControlBit.EXPECTING_REPLY,
+			receiver,
 		)
 		baApdu.encodeConfirmedServiceRequest(
 			buffer,
@@ -2293,65 +1851,28 @@ export default class Client extends EventEmitter {
 			0,
 		)
 		baServices.createObject.encode(buffer, objectId, values)
-		baBvlc.encode(
-			buffer.buffer,
-			baEnum.BvlcResultPurpose.ORIGINAL_UNICAST_NPDU,
-			buffer.offset,
+		this.sendBvlc(receiver, buffer)
+		this._addCallback(
+			settings.invokeId,
+			(err: Error | null, data?: any) => {
+				if (err) {
+					return void next!(err)
+				}
+				next!()
+			},
 		)
-		this._transport.send(buffer.buffer, buffer.offset, address)
-		this._addCallback(settings.invokeId, (err) => next(err))
 	}
 
 	/**
-	 * The deleteObject command removes an object instance from a target device.
-	 * @function bacstack.deleteObject
-	 * @param {string} address - IP address of the target device.
-	 * @param {object} objectId - The BACNET object ID to delete.
-	 * @param {number} objectId.type - The BACNET object type to delete.
-	 * @param {number} objectId.instance - The BACNET object instance to delete.
-	 * @param {object=} options
-	 * @param {MaxSegmentsAccepted=} options.maxSegments - The maximimal allowed number of segments.
-	 * @param {MaxApduLengthAccepted=} options.maxApdu - The maximal allowed APDU size.
-	 * @param {number=} options.invokeId - The invoke ID of the confirmed service telegram.
-	 * @param {function} next - The callback containing an error, in case of a failure.
-	 * @example
-	 * const bacnet = require('bacstack');
-	 * const client = new bacnet();
-	 *
-	 * client.deleteObject('192.168.1.43', {type: 8, instance: 44301}, (err) => {
-	 *   console.log('error: ', err);
-	 * });
+	 * Deletes an object from a device
 	 */
-
-	deleteObject(
-		address: string,
-		objectId: BACNetObjectID,
-		callback: ErrorCallback,
-	): void
-	deleteObject(
-		address: string,
+	public deleteObject(
+		receiver: string | { address: string; forwardedFrom?: string },
 		objectId: BACNetObjectID,
 		options: ServiceOptions,
-		callback: ErrorCallback,
-	): void
-	deleteObject(
-		address: string,
-		objectId: BACNetObjectID,
-		optionsOrCallback: ServiceOptions | ErrorCallback,
-		callback?: ErrorCallback,
+		next?: ErrorCallback,
 	): void {
-		if (typeof optionsOrCallback !== 'function' && !callback) {
-			throw new Error('A callback function must be provided')
-		}
-
-		const next: ErrorCallback =
-			typeof optionsOrCallback === 'function'
-				? optionsOrCallback
-				: callback
-
-		const options: ServiceOptions =
-			typeof optionsOrCallback === 'function' ? {} : optionsOrCallback
-
+		next = next || (options as unknown as ErrorCallback)
 		const settings = {
 			maxSegments:
 				options.maxSegments || baEnum.MaxSegmentsAccepted.SEGMENTS_65,
@@ -2359,12 +1880,14 @@ export default class Client extends EventEmitter {
 				options.maxApdu || baEnum.MaxApduLengthAccepted.OCTETS_1476,
 			invokeId: options.invokeId || this._getInvokeId(),
 		}
-		const buffer = this._getBuffer()
+		const buffer = this._getBuffer(
+			receiver && (receiver as any).forwardedFrom,
+		)
 		baNpdu.encode(
 			buffer,
 			baEnum.NpduControlPriority.NORMAL_MESSAGE |
-				baEnum.NpduControlBits.EXPECTING_REPLY,
-			address,
+				baEnum.NpduControlBit.EXPECTING_REPLY,
+			receiver,
 		)
 		baApdu.encodeConfirmedServiceRequest(
 			buffer,
@@ -2377,49 +1900,33 @@ export default class Client extends EventEmitter {
 			0,
 		)
 		baServices.deleteObject.encode(buffer, objectId)
-		baBvlc.encode(
-			buffer.buffer,
-			baEnum.BvlcResultPurpose.ORIGINAL_UNICAST_NPDU,
-			buffer.offset,
+		this.sendBvlc(receiver, buffer)
+		this._addCallback(
+			settings.invokeId,
+			(err: Error | null, data?: any) => {
+				if (err) {
+					return void next!(err)
+				}
+				next!()
+			},
 		)
-		this._transport.send(buffer.buffer, buffer.offset, address)
-		this._addCallback(settings.invokeId, (err) => next(err))
 	}
 
-	removeListElement(
-		address: string,
+	/**
+	 * Removes an element from a list property
+	 */
+	public removeListElement(
+		receiver: string | { address: string; forwardedFrom?: string },
 		objectId: BACNetObjectID,
-		reference: BACNetPropertyID,
-		values: any,
-		callback: ErrorCallback,
-	): void
-	removeListElement(
-		address: string,
-		objectId: BACNetObjectID,
-		reference: BACNetPropertyID,
-		values: any,
+		reference: {
+			id: number
+			index: number
+		},
+		values: BACNetAppData[],
 		options: ServiceOptions,
-		callback: ErrorCallback,
-	): void
-	removeListElement(
-		address: string,
-		objectId: BACNetObjectID,
-		reference: BACNetPropertyID,
-		values: any,
-		optionsOrCallback: ServiceOptions | ErrorCallback,
-		callback?: ErrorCallback,
+		next?: ErrorCallback,
 	): void {
-		if (typeof optionsOrCallback !== 'function' && !callback) {
-			throw new Error('A callback function must be provided')
-		}
-
-		const next: ErrorCallback =
-			typeof optionsOrCallback === 'function'
-				? optionsOrCallback
-				: callback
-
-		const options: ServiceOptions =
-			typeof optionsOrCallback === 'function' ? {} : optionsOrCallback
+		next = next || (options as unknown as ErrorCallback)
 		const settings = {
 			maxSegments:
 				options.maxSegments || baEnum.MaxSegmentsAccepted.SEGMENTS_65,
@@ -2427,12 +1934,14 @@ export default class Client extends EventEmitter {
 				options.maxApdu || baEnum.MaxApduLengthAccepted.OCTETS_1476,
 			invokeId: options.invokeId || this._getInvokeId(),
 		}
-		const buffer = this._getBuffer()
+		const buffer = this._getBuffer(
+			receiver && (receiver as any).forwardedFrom,
+		)
 		baNpdu.encode(
 			buffer,
 			baEnum.NpduControlPriority.NORMAL_MESSAGE |
-				baEnum.NpduControlBits.EXPECTING_REPLY,
-			address,
+				baEnum.NpduControlBit.EXPECTING_REPLY,
+			receiver,
 		)
 		baApdu.encodeConfirmedServiceRequest(
 			buffer,
@@ -2451,50 +1960,33 @@ export default class Client extends EventEmitter {
 			reference.index,
 			values,
 		)
-		baBvlc.encode(
-			buffer.buffer,
-			baEnum.BvlcResultPurpose.ORIGINAL_UNICAST_NPDU,
-			buffer.offset,
+		this.sendBvlc(receiver, buffer)
+		this._addCallback(
+			settings.invokeId,
+			(err: Error | null, data?: any) => {
+				if (err) {
+					return void next!(err)
+				}
+				next!()
+			},
 		)
-		this._transport.send(buffer.buffer, buffer.offset, address)
-		this._addCallback(settings.invokeId, (err) => next(err))
 	}
 
-	addListElement(
-		address: string,
+	/**
+	 * Adds an element to a list property
+	 */
+	public addListElement(
+		receiver: string | { address: string; forwardedFrom?: string },
 		objectId: BACNetObjectID,
-		reference: BACNetPropertyID,
-		values: any,
-		callback: ErrorCallback,
-	): void
-	addListElement(
-		address: string,
-		objectId: BACNetObjectID,
-		reference: BACNetPropertyID,
-		values: any,
+		reference: {
+			id: number
+			index: number
+		},
+		values: BACNetAppData[],
 		options: ServiceOptions,
-		callback: ErrorCallback,
-	): void
-	addListElement(
-		address: string,
-		objectId: BACNetObjectID,
-		reference: BACNetPropertyID,
-		values: any,
-		optionsOrCallback: ServiceOptions | ErrorCallback,
-		callback?: ErrorCallback,
+		next?: ErrorCallback,
 	): void {
-		if (typeof optionsOrCallback !== 'function' && !callback) {
-			throw new Error('A callback function must be provided')
-		}
-
-		const next: ErrorCallback =
-			typeof optionsOrCallback === 'function'
-				? optionsOrCallback
-				: callback
-
-		const options: ServiceOptions =
-			typeof optionsOrCallback === 'function' ? {} : optionsOrCallback
-
+		next = next || (options as unknown as ErrorCallback)
 		const settings = {
 			maxSegments:
 				options.maxSegments || baEnum.MaxSegmentsAccepted.SEGMENTS_65,
@@ -2502,12 +1994,14 @@ export default class Client extends EventEmitter {
 				options.maxApdu || baEnum.MaxApduLengthAccepted.OCTETS_1476,
 			invokeId: options.invokeId || this._getInvokeId(),
 		}
-		const buffer = this._getBuffer()
+		const buffer = this._getBuffer(
+			receiver && (receiver as any).forwardedFrom,
+		)
 		baNpdu.encode(
 			buffer,
 			baEnum.NpduControlPriority.NORMAL_MESSAGE |
-				baEnum.NpduControlBits.EXPECTING_REPLY,
-			address,
+				baEnum.NpduControlBit.EXPECTING_REPLY,
+			receiver,
 		)
 		baApdu.encodeConfirmedServiceRequest(
 			buffer,
@@ -2526,68 +2020,48 @@ export default class Client extends EventEmitter {
 			reference.index,
 			values,
 		)
-		baBvlc.encode(
-			buffer.buffer,
-			baEnum.BvlcResultPurpose.ORIGINAL_UNICAST_NPDU,
-			buffer.offset,
+		this.sendBvlc(receiver, buffer)
+		this._addCallback(
+			settings.invokeId,
+			(err: Error | null, data?: any) => {
+				if (err) {
+					return void next!(err)
+				}
+				next!()
+			},
 		)
-		this._transport.send(buffer.buffer, buffer.offset, address)
-		this._addCallback(settings.invokeId, (err) => next(err))
 	}
 
 	/**
-	 * DEPRECATED The getAlarmSummary command returns a list of all active alarms on the target device.
-	 * @function bacstack.getAlarmSummary
-	 * @param {string} address - IP address of the target device.
-	 * @param {object=} options
-	 * @param {MaxSegmentsAccepted=} options.maxSegments - The maximimal allowed number of segments.
-	 * @param {MaxApduLengthAccepted=} options.maxApdu - The maximal allowed APDU size.
-	 * @param {number=} options.invokeId - The invoke ID of the confirmed service telegram.
-	 * @param {function} next - The callback containing an error, in case of a failure and value object in case of success.
-	 * @example
-	 * const bacnet = require('bacstack');
-	 * const client = new bacnet();
-	 *
-	 * client.getAlarmSummary('192.168.1.43', (err, value) => {
-	 *   console.log('value: ', value);
-	 * });
+	 * Gets the alarm summary from a device.
+	 * @param receiver - IP address of the target device
+	 * @param options - Service options
+	 * @param next - Callback function
 	 */
-	getAlarmSummary(address: string, callback: DataCallback<any>): void
 	getAlarmSummary(
-		address: string,
-		options: ServiceOptions,
-		callback: DataCallback<any>,
-	): void
-	getAlarmSummary(
-		address: string,
-		optionsOrCallback: ServiceOptions | DataCallback<any>,
-		callback?: DataCallback<any>,
+		receiver: string | { address: string; forwardedFrom?: string },
+		options: ServiceOptions | DataCallback<BACNetAlarm[]>,
+		next?: DataCallback<BACNetAlarm[]>,
 	): void {
-		if (typeof optionsOrCallback !== 'function' && !callback) {
-			throw new Error('A callback function must be provided')
-		}
-
-		const next: DataCallback<any> =
-			typeof optionsOrCallback === 'function'
-				? optionsOrCallback
-				: callback
-
-		const options: ServiceOptions =
-			typeof optionsOrCallback === 'function' ? {} : optionsOrCallback
-
-		const settings = {
+		next = next || (options as DataCallback<BACNetAlarm[]>)
+		const settings: ServiceOptions = {
 			maxSegments:
-				options.maxSegments || baEnum.MaxSegmentsAccepted.SEGMENTS_65,
+				(options as ServiceOptions).maxSegments ||
+				baEnum.MaxSegmentsAccepted.SEGMENTS_65,
 			maxApdu:
-				options.maxApdu || baEnum.MaxApduLengthAccepted.OCTETS_1476,
-			invokeId: options.invokeId || this._getInvokeId(),
+				(options as ServiceOptions).maxApdu ||
+				baEnum.MaxApduLengthAccepted.OCTETS_1476,
+			invokeId:
+				(options as ServiceOptions).invokeId || this._getInvokeId(),
 		}
-		const buffer = this._getBuffer()
+		const buffer = this._getBuffer(
+			receiver && (receiver as any).forwardedFrom,
+		)
 		baNpdu.encode(
 			buffer,
 			baEnum.NpduControlPriority.NORMAL_MESSAGE |
-				baEnum.NpduControlBits.EXPECTING_REPLY,
-			address,
+				baEnum.NpduControlBit.EXPECTING_REPLY,
+			receiver,
 		)
 		baApdu.encodeConfirmedServiceRequest(
 			buffer,
@@ -2599,86 +2073,55 @@ export default class Client extends EventEmitter {
 			0,
 			0,
 		)
-		baBvlc.encode(
-			buffer.buffer,
-			baEnum.BvlcResultPurpose.ORIGINAL_UNICAST_NPDU,
-			buffer.offset,
-		)
-		this._transport.send(buffer.buffer, buffer.offset, address)
+		this.sendBvlc(receiver, buffer)
 		this._addCallback(settings.invokeId, (err, data) => {
-			if (err) return next(err)
+			if (err) {
+				return void next(err)
+			}
 			const result = baServices.alarmSummary.decode(
 				data.buffer,
 				data.offset,
 				data.length,
 			)
-			if (!result) return next(new Error('INVALID_DECODING'))
-			next(null, result)
+			if (!result) {
+				return void next(new Error('INVALID_DECODING'))
+			}
+			next(null, result.alarms)
 		})
 	}
 
 	/**
-	 * The getEventInformation command returns a list of all active event states on the target device.
-	 * @function bacstack.getEventInformation
-	 * @param {string} address - IP address of the target device.
-	 * @param {object=} objectId - The optional BACNET object ID to continue preceding calls.
-	 * @param {number=} objectId.type - The optional BACNET object type to continue preceding calls.
-	 * @param {number=} objectId.instance - The optional BACNET object instance to continue preceding calls.
-	 * @param {object=} options
-	 * @param {MaxSegmentsAccepted=} options.maxSegments - The maximimal allowed number of segments.
-	 * @param {MaxApduLengthAccepted=} options.maxApdu - The maximal allowed APDU size.
-	 * @param {number=} options.invokeId - The invoke ID of the confirmed service telegram.
-	 * @param {function} next - The callback containing an error, in case of a failure and value object in case of success.
-	 * @example
-	 * const bacnet = require('bacstack');
-	 * const client = new bacnet();
-	 *
-	 * client.getEventInformation('192.168.1.43', {}, (err, value) => {
-	 *   console.log('value: ', value);
-	 * });
+	 * Gets event information from a device.
+	 * @param receiver - IP address of the target device
+	 * @param objectId - Object identifier
+	 * @param options - Service options
+	 * @param next - Callback function
 	 */
 	getEventInformation(
-		address: string,
+		receiver: string | { address: string; forwardedFrom?: string },
 		objectId: BACNetObjectID,
-		callback: DataCallback<any>,
-	): void
-	getEventInformation(
-		address: string,
-		objectId: BACNetObjectID,
-		options: ServiceOptions,
-		callback: DataCallback<any>,
-	): void
-	getEventInformation(
-		address: string,
-		objectId: BACNetObjectID,
-		optionsOrCallback: ServiceOptions | DataCallback<any>,
-		callback?: DataCallback<any>,
+		options: ServiceOptions | DataCallback<BACNetEventInformation[]>,
+		next?: DataCallback<BACNetEventInformation[]>,
 	): void {
-		if (typeof optionsOrCallback !== 'function' && !callback) {
-			throw new Error('A callback function must be provided')
-		}
-
-		const next: DataCallback<any> =
-			typeof optionsOrCallback === 'function'
-				? optionsOrCallback
-				: callback
-
-		const options: ServiceOptions =
-			typeof optionsOrCallback === 'function' ? {} : optionsOrCallback
-
-		const settings = {
+		next = next || (options as DataCallback<BACNetEventInformation[]>)
+		const settings: ServiceOptions = {
 			maxSegments:
-				options.maxSegments || baEnum.MaxSegmentsAccepted.SEGMENTS_65,
+				(options as ServiceOptions).maxSegments ||
+				baEnum.MaxSegmentsAccepted.SEGMENTS_65,
 			maxApdu:
-				options.maxApdu || baEnum.MaxApduLengthAccepted.OCTETS_1476,
-			invokeId: options.invokeId || this._getInvokeId(),
+				(options as ServiceOptions).maxApdu ||
+				baEnum.MaxApduLengthAccepted.OCTETS_1476,
+			invokeId:
+				(options as ServiceOptions).invokeId || this._getInvokeId(),
 		}
-		const buffer = this._getBuffer()
+		const buffer = this._getBuffer(
+			receiver && (receiver as any).forwardedFrom,
+		)
 		baNpdu.encode(
 			buffer,
 			baEnum.NpduControlPriority.NORMAL_MESSAGE |
-				baEnum.NpduControlBits.EXPECTING_REPLY,
-			address,
+				baEnum.NpduControlBit.EXPECTING_REPLY,
+			receiver,
 		)
 		baApdu.encodeConfirmedServiceRequest(
 			buffer,
@@ -2696,78 +2139,63 @@ export default class Client extends EventEmitter {
 			objectId.type,
 			objectId.instance,
 		)
-		baBvlc.encode(
-			buffer.buffer,
-			baEnum.BvlcResultPurpose.ORIGINAL_UNICAST_NPDU,
-			buffer.offset,
-		)
-		this._transport.send(buffer.buffer, buffer.offset, address)
+		this.sendBvlc(receiver, buffer)
 		this._addCallback(settings.invokeId, (err, data) => {
-			if (err) return next(err)
+			if (err) {
+				return void next(err)
+			}
 			const result = baServices.eventInformation.decode(
 				data.buffer,
 				data.offset,
 				data.length,
 			)
-			if (!result) return next(new Error('INVALID_DECODING'))
-			next(null, result)
+			if (!result) {
+				return void next(new Error('INVALID_DECODING'))
+			}
+			next(null, result.alarms)
 		})
 	}
 
+	/**
+	 * Acknowledges an alarm.
+	 * @param receiver - IP address of the target device
+	 * @param objectId - Object identifier
+	 * @param eventState - Event state to acknowledge
+	 * @param ackText - Acknowledgement text
+	 * @param evTimeStamp - Event timestamp
+	 * @param ackTimeStamp - Acknowledgement timestamp
+	 * @param options - Service options
+	 * @param next - Callback function
+	 */
 	acknowledgeAlarm(
-		address: string,
+		receiver: string | { address: string; forwardedFrom?: string },
 		objectId: BACNetObjectID,
 		eventState: number,
 		ackText: string,
-		evTimeStamp: any,
-		ackTimeStamp: any,
-		callback: ErrorCallback,
-	): void
-	acknowledgeAlarm(
-		address: string,
-		objectId: BACNetObjectID,
-		eventState: number,
-		ackText: string,
-		evTimeStamp: any,
-		ackTimeStamp: any,
-		options: ServiceOptions,
-		callback: ErrorCallback,
-	): void
-	acknowledgeAlarm(
-		address: string,
-		objectId: BACNetObjectID,
-		eventState: number,
-		ackText: string,
-		evTimeStamp: any,
-		ackTimeStamp: any,
-		optionsOrCallback: ServiceOptions | ErrorCallback,
-		callback?: ErrorCallback,
+		evTimeStamp: Date,
+		ackTimeStamp: Date,
+		options: ServiceOptions | ErrorCallback,
+		next?: ErrorCallback,
 	): void {
-		if (typeof optionsOrCallback !== 'function' && !callback) {
-			throw new Error('A callback function must be provided')
-		}
-
-		const next: ErrorCallback =
-			typeof optionsOrCallback === 'function'
-				? optionsOrCallback
-				: callback
-
-		const options: ServiceOptions =
-			typeof optionsOrCallback === 'function' ? {} : optionsOrCallback
-
-		const settings = {
+		next = next || (options as ErrorCallback)
+		const settings: ServiceOptions = {
 			maxSegments:
-				options.maxSegments || baEnum.MaxSegmentsAccepted.SEGMENTS_65,
+				(options as ServiceOptions).maxSegments ||
+				baEnum.MaxSegmentsAccepted.SEGMENTS_65,
 			maxApdu:
-				options.maxApdu || baEnum.MaxApduLengthAccepted.OCTETS_1476,
-			invokeId: options.invokeId || this._getInvokeId(),
+				(options as ServiceOptions).maxApdu ||
+				baEnum.MaxApduLengthAccepted.OCTETS_1476,
+			invokeId:
+				(options as ServiceOptions).invokeId || this._getInvokeId(),
 		}
-		const buffer = this._getBuffer()
+		const buffer = this._getBuffer(
+			receiver && (receiver as any).forwardedFrom,
+		)
 		baNpdu.encode(
 			buffer,
 			baEnum.NpduControlPriority.NORMAL_MESSAGE |
-				baEnum.NpduControlBits.EXPECTING_REPLY,
-			address,
+				baEnum.NpduControlBit.EXPECTING_REPLY,
+			receiver,
 		)
 		baApdu.encodeConfirmedServiceRequest(
 			buffer,
@@ -2788,83 +2216,51 @@ export default class Client extends EventEmitter {
 			evTimeStamp,
 			ackTimeStamp,
 		)
-		baBvlc.encode(
-			buffer.buffer,
-			baEnum.BvlcResultPurpose.ORIGINAL_UNICAST_NPDU,
-			buffer.offset,
-		)
-		this._transport.send(buffer.buffer, buffer.offset, address)
-		this._addCallback(settings.invokeId, (err) => next(err))
+		this.sendBvlc(receiver, buffer)
+		this._addCallback(settings.invokeId, (err, data) => {
+			if (err) {
+				return void next(err)
+			}
+			next()
+		})
 	}
 
 	/**
-	 * The confirmedPrivateTransfer command invokes a confirmed proprietary/non-standard service.
-	 * @function bacstack.confirmedPrivateTransfer
-	 * @param {string} address - IP address of the target device.
-	 * @param {number} vendorId - The unique vendor identification code.
-	 * @param {number} serviceNumber - The unique service identifier.
-	 * @param {number[]} [data] - Optional additional payload data.
-	 * @param {object=} options
-	 * @param {MaxSegmentsAccepted=} options.maxSegments - The maximimal allowed number of segments.
-	 * @param {MaxApduLengthAccepted=} options.maxApdu - The maximal allowed APDU size.
-	 * @param {number=} options.invokeId - The invoke ID of the confirmed service telegram.
-	 * @param {function} next - The callback containing an error, in case of a failure.
-	 * @example
-	 * const bacnet = require('bacstack');
-	 * const client = new bacnet();
-	 *
-	 * client.confirmedPrivateTransfer('192.168.1.43', 0, 7, [0x00, 0xaa, 0xfa, 0xb1, 0x00], (err) => {
-	 *   console.log('error: ', err);
-	 * });
+	 * Sends a confirmed private transfer.
+	 * @param receiver - IP address of the target device
+	 * @param vendorId - Vendor ID
+	 * @param serviceNumber - Service number
+	 * @param data - Data to transfer
+	 * @param options - Service options
+	 * @param next - Callback function
 	 */
 	confirmedPrivateTransfer(
-		address: string,
+		receiver: string | { address: string; forwardedFrom?: string },
 		vendorId: number,
 		serviceNumber: number,
-		data: number[],
-		callback: ErrorCallback,
-	): void
-	confirmedPrivateTransfer(
-		address: string,
-		vendorId: number,
-		serviceNumber: number,
-		data: number[],
-		options: ServiceOptions,
-		callback: ErrorCallback,
-	): void
-	confirmedPrivateTransfer(
-		address: string,
-		vendorId: number,
-		serviceNumber: number,
-		data: number[],
-		optionsOrCallback: ServiceOptions | ErrorCallback,
-		callback?: ErrorCallback,
+		data: any,
+		options: ServiceOptions | ErrorCallback,
+		next?: ErrorCallback,
 	): void {
-		if (typeof optionsOrCallback !== 'function' && !callback) {
-			throw new Error('A callback function must be provided')
-		}
-
-		const next: ErrorCallback =
-			typeof optionsOrCallback === 'function'
-				? optionsOrCallback
-				: callback
-
-		const options: ServiceOptions =
-			typeof optionsOrCallback === 'function' ? {} : optionsOrCallback
-
-		const settings = {
+		next = next || (options as ErrorCallback)
+		const settings: ServiceOptions = {
 			maxSegments:
-				options.maxSegments || baEnum.MaxSegmentsAccepted.SEGMENTS_65,
+				(options as ServiceOptions).maxSegments ||
+				baEnum.MaxSegmentsAccepted.SEGMENTS_65,
 			maxApdu:
-				options.maxApdu || baEnum.MaxApduLengthAccepted.OCTETS_1476,
-			invokeId: options.invokeId || this._getInvokeId(),
+				(options as ServiceOptions).maxApdu ||
+				baEnum.MaxApduLengthAccepted.OCTETS_1476,
+			invokeId:
+				(options as ServiceOptions).invokeId || this._getInvokeId(),
 		}
-		const buffer = this._getBuffer()
+		const buffer = this._getBuffer(
+			receiver && (receiver as any).forwardedFrom,
+		)
 		baNpdu.encode(
 			buffer,
 			baEnum.NpduControlPriority.NORMAL_MESSAGE |
-				baEnum.NpduControlBits.EXPECTING_REPLY,
-			address,
+				baEnum.NpduControlBit.EXPECTING_REPLY,
+			receiver,
 		)
 		baApdu.encodeConfirmedServiceRequest(
 			buffer,
@@ -2877,39 +2273,35 @@ export default class Client extends EventEmitter {
 			0,
 		)
 		baServices.privateTransfer.encode(buffer, vendorId, serviceNumber, data)
-		baBvlc.encode(
-			buffer.buffer,
-			baEnum.BvlcResultPurpose.ORIGINAL_UNICAST_NPDU,
-			buffer.offset,
-		)
-		this._transport.send(buffer.buffer, buffer.offset, address)
-		this._addCallback(settings.invokeId, (err) => next(err))
+		this.sendBvlc(receiver, buffer)
+		this._addCallback(settings.invokeId, (err, data) => {
+			if (err) {
+				return void next(err)
+			}
+			next()
+		})
 	}
 
 	/**
-	 * The unconfirmedPrivateTransfer command invokes an unconfirmed proprietary/non-standard service.
-	 * @function bacstack.unconfirmedPrivateTransfer
-	 * @param {string} address - IP address of the target device.
-	 * @param {number} vendorId - The unique vendor identification code.
-	 * @param {number} serviceNumber - The unique service identifier.
-	 * @param {number[]} [data] - Optional additional payload data.
-	 * @example
-	 * const bacnet = require('bacstack');
-	 * const client = new bacnet();
-	 *
-	 * client.unconfirmedPrivateTransfer('192.168.1.43', 0, 7, [0x00, 0xaa, 0xfa, 0xb1, 0x00]);
+	 * Sends an unconfirmed private transfer.
+	 * @param receiver - IP address of the target device
+	 * @param vendorId - Vendor ID
+	 * @param serviceNumber - Service number
+	 * @param data - Data to transfer
 	 */
 	unconfirmedPrivateTransfer(
-		address: string,
+		receiver: string | { address: string; forwardedFrom?: string },
 		vendorId: number,
 		serviceNumber: number,
-		data: number[],
-	) {
-		const buffer = this._getBuffer()
+		data: any,
+	): void {
+		const buffer = this._getBuffer(
+			receiver && (receiver as any).forwardedFrom,
+		)
 		baNpdu.encode(
 			buffer,
 			baEnum.NpduControlPriority.NORMAL_MESSAGE,
-			address,
+			receiver,
 		)
 		baApdu.encodeUnconfirmedServiceRequest(
 			buffer,
@@ -2917,59 +2309,49 @@ export default class Client extends EventEmitter {
 			baEnum.UnconfirmedServiceChoice.UNCONFIRMED_PRIVATE_TRANSFER,
 		)
 		baServices.privateTransfer.encode(buffer, vendorId, serviceNumber, data)
-		baBvlc.encode(
-			buffer.buffer,
-			baEnum.BvlcResultPurpose.ORIGINAL_UNICAST_NPDU,
-			buffer.offset,
-		)
-		this._transport.send(buffer.buffer, buffer.offset, address)
+		this.sendBvlc(receiver, buffer)
 	}
 
 	/**
-	 * DEPRECATED The getEnrollmentSummary command returns a list of event-initiating objects on the target device.
-	 * @function bacstack.getEnrollmentSummary
-	 * @param {string} address - IP address of the target device.
-	 * @param {number} acknowledgmentFilter - Filter for ALL/ACKED/NOT-ACKED, 0/1/2.
-	 * @param {object=} options
-	 * @param {object=} options.enrollmentFilter - Filter for enrollment.
-	 * @param {EventState=} options.eventStateFilter - Filter for event state.
-	 * @param {EventType=} options.eventTypeFilter - Filter for event type.
-	 * @param {object=} options.priorityFilter
-	 * @param {number} options.priorityFilter.min - Filter for minimal priority
-	 * @param {number} options.priorityFilter.max - Filter for maximal priority
-	 * @param {number=} options.notificationClassFilter - Filter for notification class.
-	 * @param {MaxSegmentsAccepted=} options.maxSegments - The maximimal allowed number of segments.
-	 * @param {MaxApduLengthAccepted=} options.maxApdu - The maximal allowed APDU size.
-	 * @param {number=} options.invokeId - The invoke ID of the confirmed service telegram.
-	 * @param {function} next - The callback containing an error, in case of a failure and value object in case of success.
-	 * @example
-	 * const bacnet = require('bacstack');
-	 * const client = new bacnet();
-	 *
-	 * client.getEnrollmentSummary('192.168.1.43', 0, (err, value) => {
-	 *   console.log('value: ', value);
-	 * });
+	 * Gets enrollment summary from a device.
+	 * @param receiver - IP address of the target device
+	 * @param acknowledgmentFilter - Acknowledgment filter
+	 * @param options - Service options with additional filters
+	 * @param next - Callback function
 	 */
 	getEnrollmentSummary(
-		address: string,
+		receiver: string | { address: string; forwardedFrom?: string },
 		acknowledgmentFilter: number,
-		options: any,
-		next: (err?: Error, result?: any) => void,
-	) {
-		next = next || options
-		const settings = {
+		options:
+			| (ServiceOptions & {
+					enrollmentFilter?: any
+					eventStateFilter?: any
+					eventTypeFilter?: any
+					priorityFilter?: any
+					notificationClassFilter?: any
+			  })
+			| DataCallback<any>,
+		next?: DataCallback<any>,
+	): void {
+		next = next || (options as DataCallback<any>)
+		const settings: ServiceOptions = {
 			maxSegments:
-				options.maxSegments || baEnum.MaxSegmentsAccepted.SEGMENTS_65,
+				(options as ServiceOptions).maxSegments ||
+				baEnum.MaxSegmentsAccepted.SEGMENTS_65,
 			maxApdu:
-				options.maxApdu || baEnum.MaxApduLengthAccepted.OCTETS_1476,
-			invokeId: options.invokeId || this._getInvokeId(),
+				(options as ServiceOptions).maxApdu ||
+				baEnum.MaxApduLengthAccepted.OCTETS_1476,
+			invokeId:
+				(options as ServiceOptions).invokeId || this._getInvokeId(),
 		}
-		const buffer = this._getBuffer()
+		const buffer = this._getBuffer(
+			receiver && (receiver as any).forwardedFrom,
+		)
 		baNpdu.encode(
 			buffer,
 			baEnum.NpduControlPriority.NORMAL_MESSAGE |
-				baEnum.NpduControlBits.EXPECTING_REPLY,
-			address,
+				baEnum.NpduControlBit.EXPECTING_REPLY,
+			receiver,
 		)
 		baApdu.encodeConfirmedServiceRequest(
 			buffer,
@@ -2984,36 +2366,45 @@ export default class Client extends EventEmitter {
 		baServices.getEnrollmentSummary.encode(
 			buffer,
 			acknowledgmentFilter,
-			options.enrollmentFilter,
-			options.eventStateFilter,
-			options.eventTypeFilter,
-			options.priorityFilter,
-			options.notificationClassFilter,
+			(options as any).enrollmentFilter,
+			(options as any).eventStateFilter,
+			(options as any).eventTypeFilter,
+			(options as any).priorityFilter,
+			(options as any).notificationClassFilter,
 		)
-		baBvlc.encode(
-			buffer.buffer,
-			baEnum.BvlcResultPurpose.ORIGINAL_UNICAST_NPDU,
-			buffer.offset,
-		)
-		this._transport.send(buffer.buffer, buffer.offset, address)
+		this.sendBvlc(receiver, buffer)
 		this._addCallback(settings.invokeId, (err, data) => {
-			if (err) return next(err)
+			if (err) {
+				return void next(err)
+			}
 			const result = baServices.getEnrollmentSummary.decodeAcknowledge(
 				data.buffer,
 				data.offset,
 				data.length,
 			)
-			if (!result) return next(new Error('INVALID_DECODING'))
+			if (!result) {
+				return void next(new Error('INVALID_DECODING'))
+			}
 			next(null, result)
 		})
 	}
 
-	unconfirmedEventNotification(address: string, eventNotification: any) {
-		const buffer = this._getBuffer()
+	/**
+	 * Sends an unconfirmed event notification.
+	 * @param receiver - IP address of the target device
+	 * @param eventNotification - Event notification data
+	 */
+	unconfirmedEventNotification(
+		receiver: string | { address: string; forwardedFrom?: string },
+		eventNotification: any,
+	): void {
+		const buffer = this._getBuffer(
+			receiver && (receiver as any).forwardedFrom,
+		)
 		baNpdu.encode(
 			buffer,
 			baEnum.NpduControlPriority.NORMAL_MESSAGE,
-			address,
+			receiver,
 		)
 		baApdu.encodeUnconfirmedServiceRequest(
 			buffer,
@@ -3021,34 +2412,41 @@ export default class Client extends EventEmitter {
 			baEnum.UnconfirmedServiceChoice.UNCONFIRMED_EVENT_NOTIFICATION,
 		)
 		baServices.eventNotifyData.encode(buffer, eventNotification)
-		baBvlc.encode(
-			buffer.buffer,
-			baEnum.BvlcResultPurpose.ORIGINAL_UNICAST_NPDU,
-			buffer.offset,
-		)
-		this._transport.send(buffer.buffer, buffer.offset, address)
+		this.sendBvlc(receiver, buffer)
 	}
 
+	/**
+	 * Sends a confirmed event notification.
+	 * @param receiver - IP address of the target device
+	 * @param eventNotification - Event notification data
+	 * @param options - Service options
+	 * @param next - Callback function
+	 */
 	confirmedEventNotification(
-		address: string,
+		receiver: string | { address: string; forwardedFrom?: string },
 		eventNotification: any,
-		options: any,
-		next: (err?: Error) => void,
-	) {
-		next = next || options
-		const settings = {
+		options: ServiceOptions | ErrorCallback,
+		next?: ErrorCallback,
+	): void {
+		next = next || (options as ErrorCallback)
+		const settings: ServiceOptions = {
 			maxSegments:
-				options.maxSegments || baEnum.MaxSegmentsAccepted.SEGMENTS_65,
+				(options as ServiceOptions).maxSegments ||
+				baEnum.MaxSegmentsAccepted.SEGMENTS_65,
 			maxApdu:
-				options.maxApdu || baEnum.MaxApduLengthAccepted.OCTETS_1476,
-			invokeId: options.invokeId || this._getInvokeId(),
+				(options as ServiceOptions).maxApdu ||
+				baEnum.MaxApduLengthAccepted.OCTETS_1476,
+			invokeId:
+				(options as ServiceOptions).invokeId || this._getInvokeId(),
 		}
-		const buffer = this._getBuffer()
+		const buffer = this._getBuffer(
+			receiver && (receiver as any).forwardedFrom,
+		)
 		baNpdu.encode(
 			buffer,
 			baEnum.NpduControlPriority.NORMAL_MESSAGE |
-				baEnum.NpduControlBits.EXPECTING_REPLY,
-			address,
+				baEnum.NpduControlBit.EXPECTING_REPLY,
+			receiver,
 		)
 		baApdu.encodeConfirmedServiceRequest(
 			buffer,
@@ -3061,24 +2459,37 @@ export default class Client extends EventEmitter {
 			0,
 		)
 		baServices.eventNotifyData.encode(buffer, eventNotification)
-		baBvlc.encode(
-			buffer.buffer,
-			baEnum.BvlcResultPurpose.ORIGINAL_UNICAST_NPDU,
-			buffer.offset,
-		)
-		this._transport.send(buffer.buffer, buffer.offset, address)
-		this._addCallback(settings.invokeId, (err) => next(err))
+		this.sendBvlc(receiver, buffer)
+		this._addCallback(settings.invokeId, (err, data) => {
+			if (err) {
+				return void next(err)
+			}
+			next()
+		})
 	}
 
-	// Public Device Functions
+	/**
+	 * The readPropertyResponse call sends a response with information about one of our properties.
+	 * @param receiver - IP address of the target device or receiver object
+	 * @param invokeId - ID of the original readProperty request
+	 * @param objectId - objectId from the original request
+	 * @param property - property being read, taken from the original request
+	 * @param value - property value to be returned
+	 * @param options - varying behaviour for special circumstances
+	 */
 	readPropertyResponse(
-		receiver: string,
+		receiver: string | { address: string; forwardedFrom?: string },
 		invokeId: number,
 		objectId: BACNetObjectID,
 		property: BACNetPropertyID,
-		value: any[],
-	) {
-		const buffer = this._getBuffer()
+		value: BACNetAppData[] | BACNetAppData,
+		options: { forwardedFrom?: string } = {},
+	): void {
+		const buffer = this._getBuffer(
+			receiver && typeof receiver !== 'string'
+				? receiver.forwardedFrom
+				: undefined,
+		)
 		baNpdu.encode(
 			buffer,
 			baEnum.NpduControlPriority.NORMAL_MESSAGE,
@@ -3090,27 +2501,35 @@ export default class Client extends EventEmitter {
 			baEnum.ConfirmedServiceChoice.READ_PROPERTY,
 			invokeId,
 		)
+
+		const valueArray = Array.isArray(value) ? value : [value]
+
 		baServices.readProperty.encodeAcknowledge(
 			buffer,
 			objectId,
 			property.id,
 			property.index,
-			value,
+			valueArray,
 		)
-		baBvlc.encode(
-			buffer.buffer,
-			baEnum.BvlcResultPurpose.ORIGINAL_UNICAST_NPDU,
-			buffer.offset,
-		)
-		this._transport.send(buffer.buffer, buffer.offset, receiver)
+		this.sendBvlc(receiver, buffer)
 	}
 
+	/**
+	 * Sends a response with information about multiple properties.
+	 * @param receiver - IP address of the target device or receiver object
+	 * @param invokeId - ID of the original readPropertyMultiple request
+	 * @param values - Array of property values to return
+	 */
 	readPropertyMultipleResponse(
-		receiver: string,
+		receiver: string | { address: string; forwardedFrom?: string },
 		invokeId: number,
-		values: any[],
-	) {
-		const buffer = this._getBuffer()
+		values: BACNetReadAccess[],
+	): void {
+		const buffer = this._getBuffer(
+			receiver && typeof receiver !== 'string'
+				? receiver.forwardedFrom
+				: undefined,
+		)
 		baNpdu.encode(
 			buffer,
 			baEnum.NpduControlPriority.NORMAL_MESSAGE,
@@ -3123,76 +2542,87 @@ export default class Client extends EventEmitter {
 			invokeId,
 		)
 		baServices.readPropertyMultiple.encodeAcknowledge(buffer, values)
-		baBvlc.encode(
-			buffer.buffer,
-			baEnum.BvlcResultPurpose.ORIGINAL_UNICAST_NPDU,
-			buffer.offset,
-		)
-		this._transport.send(buffer.buffer, buffer.offset, receiver)
+		this.sendBvlc(receiver, buffer)
 	}
 
-	iAmResponse(deviceId: number, segmentation: number, vendorId: number) {
-		const buffer = this._getBuffer()
+	/**
+	 * The iAmResponse command is sent as a reply to a whoIs request.
+	 * @param receiver - address to send packet to, null for local broadcast
+	 * @param deviceId - Our device ID
+	 * @param segmentation - an enum.Segmentation value
+	 * @param vendorId - The numeric ID assigned to the organisation providing this application
+	 */
+	iAmResponse(
+		receiver: { address?: string; forwardedFrom?: string } | null,
+		deviceId: number,
+		segmentation: number,
+		vendorId: number,
+	): void {
+		const buffer = this._getBuffer(receiver?.forwardedFrom)
 		baNpdu.encode(
 			buffer,
 			baEnum.NpduControlPriority.NORMAL_MESSAGE,
-			this._transport.getBroadcastAddress(),
+			receiver,
 		)
 		baApdu.encodeUnconfirmedServiceRequest(
 			buffer,
 			baEnum.PduType.UNCONFIRMED_REQUEST,
 			baEnum.UnconfirmedServiceChoice.I_AM,
 		)
-		baServices.iAmBroadcast.encode(
+		baServices.iAm.encode(
 			buffer,
 			deviceId,
 			this._transport.getMaxPayload(),
 			segmentation,
 			vendorId,
 		)
-		baBvlc.encode(
-			buffer.buffer,
-			baEnum.BvlcResultPurpose.ORIGINAL_BROADCAST_NPDU,
-			buffer.offset,
-		)
-		this._transport.send(
-			buffer.buffer,
-			buffer.offset,
-			this._transport.getBroadcastAddress(),
-		)
+		this.sendBvlc(receiver, buffer)
 	}
 
+	/**
+	 * Sends an iHave response.
+	 * @param receiver - IP address of the target device or receiver object
+	 * @param deviceId - Our device ID
+	 * @param objectId - The object ID that we have
+	 * @param objectName - The name of the object
+	 */
 	iHaveResponse(
+		receiver: { address?: string; forwardedFrom?: string } | null,
 		deviceId: BACNetObjectID,
 		objectId: BACNetObjectID,
 		objectName: string,
-	) {
-		const buffer = this._getBuffer()
+	): void {
+		const buffer = this._getBuffer(receiver?.forwardedFrom)
 		baNpdu.encode(
 			buffer,
 			baEnum.NpduControlPriority.NORMAL_MESSAGE,
-			this._transport.getBroadcastAddress(),
+			receiver,
 		)
 		baApdu.encodeUnconfirmedServiceRequest(
 			buffer,
 			baEnum.PduType.UNCONFIRMED_REQUEST,
 			baEnum.UnconfirmedServiceChoice.I_HAVE,
 		)
-		baServices.iHaveBroadcast.encode(buffer, deviceId, objectId, objectName)
-		baBvlc.encode(
-			buffer.buffer,
-			baEnum.BvlcResultPurpose.ORIGINAL_BROADCAST_NPDU,
-			buffer.offset,
-		)
-		this._transport.send(
-			buffer.buffer,
-			buffer.offset,
-			this._transport.getBroadcastAddress(),
-		)
+		baServices.iHave.encode(buffer, deviceId, objectId, objectName)
+		this.sendBvlc(receiver, buffer)
 	}
 
-	simpleAckResponse(receiver: string, service: number, invokeId: number) {
-		const buffer = this._getBuffer()
+	/**
+	 * Sends a simple acknowledgement response.
+	 * @param receiver - IP address of the target device or receiver object
+	 * @param service - Service being acknowledged
+	 * @param invokeId - Original invoke ID
+	 */
+	simpleAckResponse(
+		receiver: { address?: string; forwardedFrom?: string } | string,
+		service: number,
+		invokeId: number,
+	): void {
+		const buffer = this._getBuffer(
+			receiver && typeof receiver !== 'string'
+				? receiver.forwardedFrom
+				: undefined,
+		)
 		baNpdu.encode(
 			buffer,
 			baEnum.NpduControlPriority.NORMAL_MESSAGE,
@@ -3204,22 +2634,35 @@ export default class Client extends EventEmitter {
 			service,
 			invokeId,
 		)
-		baBvlc.encode(
-			buffer.buffer,
-			baEnum.BvlcResultPurpose.ORIGINAL_UNICAST_NPDU,
-			buffer.offset,
-		)
-		this._transport.send(buffer.buffer, buffer.offset, receiver)
+		this.sendBvlc(receiver, buffer)
 	}
 
+	/**
+	 * Sends an error response.
+	 * @param receiver - IP address of the target device or receiver object
+	 * @param service - Service that had an error
+	 * @param invokeId - Original invoke ID
+	 * @param errorClass - Error class code
+	 * @param errorCode - Specific error code
+	 */
 	errorResponse(
-		receiver: string,
+		receiver: { address?: string; forwardedFrom?: string } | string,
 		service: number,
 		invokeId: number,
 		errorClass: number,
 		errorCode: number,
-	) {
-		const buffer = this._getBuffer()
+	): void {
+		trace(
+			`error response on ${JSON.stringify(receiver)} service: ${JSON.stringify(service)} invokeId: ${invokeId} errorClass: ${errorClass} errorCode: ${errorCode}`,
+		)
+		trace(
+			`error message ${baServices.error.buildMessage({ class: errorClass, code: errorCode })}`,
+		)
+		const buffer = this._getBuffer(
+			receiver && typeof receiver !== 'string'
+				? receiver.forwardedFrom
+				: undefined,
+		)
 		baNpdu.encode(
 			buffer,
 			baEnum.NpduControlPriority.NORMAL_MESSAGE,
@@ -3227,24 +2670,109 @@ export default class Client extends EventEmitter {
 		)
 		baApdu.encodeError(buffer, baEnum.PduType.ERROR, service, invokeId)
 		baServices.error.encode(buffer, errorClass, errorCode)
-		baBvlc.encode(
-			buffer.buffer,
-			baEnum.BvlcResultPurpose.ORIGINAL_UNICAST_NPDU,
-			buffer.offset,
-		)
-		this._transport.send(buffer.buffer, buffer.offset, receiver)
+		this.sendBvlc(receiver, buffer)
 	}
 
 	/**
-	 * Unloads the current BACstack instance and closes the underlying UDP socket.
-	 * @function bacstack.close
-	 * @example
-	 * const bacnet = require('bacstack');
-	 * const client = new bacnet();
-	 *
-	 * client.close();
+	 * Sends a BACnet Virtual Link Control message.
+	 * @param receiver - IP address of the target device or receiver object
+	 * @param buffer - Buffer containing the message
 	 */
-	close() {
+	sendBvlc(
+		receiver: { address?: string; forwardedFrom?: string } | string | null,
+		buffer: EncodeBuffer,
+	): void {
+		if (typeof receiver === 'string') {
+			receiver = {
+				address: receiver,
+			}
+		}
+
+		if (receiver && receiver.forwardedFrom) {
+			// Remote node address given, forward to BBMD
+			baBvlc.encode(
+				buffer.buffer,
+				baEnum.BvlcResultPurpose.FORWARDED_NPDU,
+				buffer.offset,
+				receiver.forwardedFrom,
+			)
+		} else if (receiver && receiver.address) {
+			// Specific address, unicast
+			baBvlc.encode(
+				buffer.buffer,
+				baEnum.BvlcResultPurpose.ORIGINAL_UNICAST_NPDU,
+				buffer.offset,
+			)
+		} else {
+			// No address, broadcast
+			baBvlc.encode(
+				buffer.buffer,
+				baEnum.BvlcResultPurpose.ORIGINAL_BROADCAST_NPDU,
+				buffer.offset,
+			)
+		}
+
+		this._transport.send(
+			buffer.buffer,
+			buffer.offset,
+			(receiver && receiver.address) || null,
+		)
+	}
+
+	/**
+	 * The resultResponse is a BVLC-Result message used to respond to certain events, such as BBMD registration.
+	 * This message cannot be wrapped for passing through a BBMD, as it is used as a BBMD control message.
+	 * @param receiver - IP address of the target device or receiver object
+	 * @param resultCode - Single value from BvlcResultFormat enum
+	 */
+	resultResponse(receiver: { address: string }, resultCode: number): void {
+		const buffer = this._getBuffer()
+		baApdu.encodeResult(buffer, resultCode)
+		baBvlc.encode(
+			buffer.buffer,
+			baEnum.BvlcResultPurpose.BVLC_RESULT,
+			buffer.offset,
+		)
+		this._transport.send(buffer.buffer, buffer.offset, receiver.address)
+	}
+
+	/**
+	 * Unloads the current bacnet instance and closes the underlying UDP socket.
+	 */
+	close(): void {
 		this._transport.close()
+	}
+
+	/**
+	 * Helper function to take an array of enums and produce a bitstring suitable
+	 * for inclusion as a property.
+	 * @param items - Array of bit positions to set in the bitstring
+	 * @returns BACnet bitstring object
+	 */
+	static createBitstring(items: number[]): BACNetBitString {
+		let offset = 0
+		const bytes: number[] = []
+		let bitsUsed = 0
+
+		while (items.length) {
+			// Find any values between offset and offset+8, for the next byte
+			let value = 0
+			items = items.filter((i) => {
+				if (i >= offset + 8) {
+					return true
+				} // leave for future iteration
+				value |= 1 << (i - offset)
+				bitsUsed = Math.max(bitsUsed, i)
+				return false // remove from list
+			})
+			bytes.push(value)
+			offset += 8
+		}
+		bitsUsed++
+
+		return {
+			value: bytes,
+			bitsUsed,
+		}
 	}
 }

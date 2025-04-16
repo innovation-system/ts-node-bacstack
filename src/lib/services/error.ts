@@ -1,4 +1,5 @@
 import * as baAsn1 from '../asn1'
+import * as baEnum from '../enum'
 import { EncodeBuffer } from '../types'
 
 export const encode = (
@@ -29,4 +30,23 @@ export const decode = (buffer: Buffer, offset: number) => {
 		class: errorClass.value,
 		code: errorCode.value,
 	}
+}
+
+export const buildMessage = (result: {
+	class: number
+	code: number
+}): string => {
+	return (
+		'BacnetError Class: ' +
+		baEnum.ErrorClassName[result.class] +
+		' ' +
+		'(' +
+		result.class +
+		') ' +
+		'Code: ' +
+		baEnum.ErrorCodeName[result.code] +
+		' (' +
+		result.code +
+		')'
+	)
 }

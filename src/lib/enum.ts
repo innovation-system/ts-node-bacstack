@@ -2077,7 +2077,7 @@ export const NetworkLayerMessageType = {
 }
 
 // ASHRE 135-2016 - 6.2.2 Network Layer Protocol Control Information - Enumerators
-export const NpduControlBits = {
+export const NpduControlBit = {
 	EXPECTING_REPLY: 1 << 2,
 	SOURCE_SPECIFIED: 1 << 3,
 	DESTINATION_SPECIFIED: 1 << 5,
