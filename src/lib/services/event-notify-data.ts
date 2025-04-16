@@ -81,14 +81,14 @@ export const encode = (buffer: EncodeBuffer, data: any): void => {
 					baAsn1.encodeOpeningTag(buffer, 0)
 
 					switch (data.changeOfValueTag) {
-						case baEnum.CovTypes.REAL:
+						case baEnum.CovType.REAL:
 							baAsn1.encodeContextReal(
 								buffer,
 								1,
 								data.changeOfValueChangeValue,
 							)
 							break
-						case baEnum.CovTypes.BIT_STRING:
+						case baEnum.CovType.BIT_STRING:
 							baAsn1.encodeContextBitstring(
 								buffer,
 								0,
