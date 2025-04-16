@@ -1,6 +1,6 @@
 Node Version: `X.Y.Z`
 
-TS Node BACstack Version: `X.Y.Z`
+TS Node bacnet Version: `X.Y.Z`
 
 - [ ] Bug Report
 - [ ] Feature Request

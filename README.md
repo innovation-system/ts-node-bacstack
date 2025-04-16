@@ -1,4 +1,4 @@
-# TS Node BACstack
+# TS Node bacnet
 
 A BACnet® protocol stack written in pure TypeScript from contributors and maintained by [PLUS for Node-RED](http://plus4nodered.com/).
 BACnet® is a protocol to interact with building automation devices defined by ASHRAE.
@@ -17,7 +17,7 @@ try these options on npm install to build from source if you have problems to in
 ### Features
 
 The BACnet standard defines a wide variety of services as part of it's
-specification. While Node BACstack tries to be as complete as possible,
+specification. While Node bacnet tries to be as complete as possible,
 following services are already supported at this point in time:
 
 | Service                        |                                      Execute                                      | Handle                                                                        |
@@ -57,7 +57,7 @@ following services are already supported at this point in time:
 
 ## Contribution
 
-Special thanks to Fabio Huser for the [fundamental work](https://github.com/fh1ch/node-bacstack).
+Special thanks to Fabio Huser for the [fundamental work](https://github.com/fh1ch/node-bacnet).
 **Yes, sure!** Please help us to make it even better and become a community member of [PLUS for Node-RED](http://plus4nodered.com/)!
 
 #### Happy coding!

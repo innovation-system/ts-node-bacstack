@@ -1,26 +1,36 @@
-'use strict';
+'use strict'
 
-import {describe, expect, it} from '@jest/globals';
+import { describe, expect, it } from '@jest/globals'
 
-import * as utils from './utils';
-import * as baServices from '../../src/lib/services';
+import * as utils from './utils'
+import * as baServices from '../../src/lib/services'
 
-describe('bacstack - Services layer AddListElement unit', () => {
-  it('should successfully encode and decode', () => {
-    const buffer = utils.getBuffer();
-    baServices.addListElement.encode(buffer, {type: 11, instance: 560}, 85, 2, [
-      {type: 1, value: false},
-      {type: 2, value: 1}
-    ]);
-    const result = baServices.addListElement.decode(buffer.buffer, 0, buffer.offset);
-    delete result.len;
-    expect(result).toEqual({
-      objectId: {type: 11, instance: 560},
-      property: {id: 85, index: 2},
-      values: [
-        {type: 1, value: false},
-        {type: 2, value: 1}
-      ]
-    });
-  });
-});
+describe('bacnet - Services layer AddListElement unit', () => {
+	it('should successfully encode and decode', () => {
+		const buffer = utils.getBuffer()
+		baServices.addListElement.encode(
+			buffer,
+			{ type: 11, instance: 560 },
+			85,
+			2,
+			[
+				{ type: 1, value: false },
+				{ type: 2, value: 1 },
+			],
+		)
+		const result = baServices.addListElement.decode(
+			buffer.buffer,
+			0,
+			buffer.offset,
+		)
+		delete result.len
+		expect(result).toEqual({
+			objectId: { type: 11, instance: 560 },
+			property: { id: 85, index: 2 },
+			values: [
+				{ type: 1, value: false },
+				{ type: 2, value: 1 },
+			],
+		})
+	})
+})
