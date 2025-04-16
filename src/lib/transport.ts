@@ -5,7 +5,7 @@ import { TransportSettings } from './types'
 import debugLib from 'debug'
 
 const debug = debugLib('bacnet:transport:debug')
-// const trace = debugLib('bacnet:transport:trace');
+const trace = debugLib('bacnet:transport:trace')
 
 const DEFAULT_BACNET_PORT = 47808
 
@@ -24,7 +24,10 @@ export default class Transport extends EventEmitter {
 	constructor(settings: TransportSettings) {
 		super()
 		this._settings = settings
-		this._server = createSocket({ type: 'udp4', reuseAddr: false })
+		this._server = createSocket({
+			type: 'udp4',
+			reuseAddr: settings.reuseAddr,
+		})
 		this._server.on('message', (msg, rinfo) => {
 			// Check for duplicate messages
 			if (this.ownAddress.port === rinfo.port) {
@@ -69,7 +72,7 @@ export default class Transport extends EventEmitter {
 		})
 	}
 
-	getBroadcastAddress(): string | undefined {
+	getBroadcastAddress(): string {
 		return this._settings.broadcastAddress
 	}
 
@@ -77,7 +80,7 @@ export default class Transport extends EventEmitter {
 		return 1482
 	}
 
-	send(buffer: Buffer, offset: number, receiver: string): void {
+	send(buffer: Buffer, offset: number, receiver?: string): void {
 		if (!receiver) {
 			receiver = this.getBroadcastAddress()
 			const dataToSend = Buffer.alloc(offset)
@@ -108,7 +111,7 @@ export default class Transport extends EventEmitter {
 
 	open(): void {
 		this._server.bind(
-			this._settings.port || 47808,
+			this._settings.port || DEFAULT_BACNET_PORT,
 			this._settings.interface,
 			() => {
 				this._server.setBroadcast(true)

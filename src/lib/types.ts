@@ -20,6 +20,7 @@ export interface TransportSettings {
 	port?: number
 	interface?: string
 	broadcastAddress?: string
+	reuseAddr?: boolean
 }
 
 export interface BACNetObjectID {
